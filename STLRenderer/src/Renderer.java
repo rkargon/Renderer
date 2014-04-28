@@ -2,6 +2,8 @@ import java.awt.Color;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Point;
+import java.awt.Rectangle;
+import java.awt.RenderingHints;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.KeyAdapter;
@@ -33,8 +35,12 @@ public class Renderer extends JPanel {
 	ArrayList<STLObject> meshes;
 	ArrayList<Lamp> lamps;
 	Camera cam;
+	World world;
 
-	boolean wireframe = false;
+	//0 - wireframe
+	//1 - painter's algorithm
+	//2 - z-buffering
+	int rendermode = 0;
 
 	//animation
 	Timer t;
@@ -60,7 +66,8 @@ public class Renderer extends JPanel {
 		lamps.add(new Lamp(5, new Vertex(0, 3, 0), Color.WHITE));
 
 		this.setBackground(Color.WHITE);
-		cam = new Camera(-10, 0, 0, 0, 0, 0, 1, 0.1);
+		cam = new Camera(-10, 0, 0, 0, 0, 0, 1, 0.1, 1000.0, false);
+		world = new World(Color.WHITE);
 
 		this.addListeners();
 
@@ -141,8 +148,12 @@ public class Renderer extends JPanel {
 				else if (e.getKeyCode() == KeyEvent.VK_SPACE) {
 					cam.setGlobalRotations(0, 0, 0);
 				}
-				else if (e.getKeyCode()==KeyEvent.VK_Z){
-					wireframe=!wireframe;
+				else if (e.getKeyCode() == KeyEvent.VK_Z) {
+					rendermode++;
+					if (rendermode > 2) rendermode = 0;
+				}
+				else if (e.getKeyCode() == KeyEvent.VK_5) {
+					cam.ortho = !cam.ortho;
 				}
 
 				cam.centerOrigin();
@@ -154,61 +165,64 @@ public class Renderer extends JPanel {
 	}
 
 	/**
-	 * Projects a 3d vertex onto the 2d panel's plane, returning the pixel
-	 * coordinates on which to draw the vertex.
+	 * For each lamp, increments r,g,b intensity values based on
+	 * direction, distance, and intensity of light.
+	 * These values are summed for all lamps, and then
+	 * multiplied by the color of the material (and clamped to
+	 * [0, 255])
+	 * Color values are handles separately.
 	 * 
 	 * @param v
-	 *            The vertex to be drawn
-	 * @return The pixel coordinates of the vertex drawn on the panel. Returns
-	 *         <code>(-1,-1)</code> if vertex is too close to camera (based on
-	 *         <code>cam.mindist</code>, the camera's clipping distance)
+	 *            the vertex for which to calculate lighting
+	 * @param n
+	 *            the normal of the vertex
+	 * @param m
+	 *            the material of the face
+	 * 
+	 * @return the resulting color of the face
 	 */
-	public Point projectVertex(Vertex v) {
-		Vertex norm = cam.normal(), horiz = cam.horizontal(), vert = cam
-				.vertical();
-		v = v.subtract(cam.center); //set v to the vector from the camera to the point
+	public Color calcVertexLighting(Vertex v, Vertex n, Material m) {
+		//flat shading, no distance falloff
 
-		//is point too close to camera? (This is to avoid points on the camera's center, which don't have an angle of incidence)
-		if (v.dotproduct(norm) <= cam.mindist) return null;
+		double r = 0, g = 0, b = 0;
+		for (Lamp l : lamps) {
+			Vertex lampvect = l.loc.subtract(v);
 
-		Vertex v_nv = v.subtract(horiz.scalarproduct(v.dotproduct(horiz))); //projection onto plane of normal and vert ('vertical plane')
-		Vertex v_nh = v.subtract(vert.scalarproduct(v.dotproduct(vert))); //projection onto plane of normal and horiz ('horizontal plane')
+			//determines angle between normal and lamp.
+			double dotprod = lampvect.getUnitVector().dotproduct(n);
+			double dstsqr = lampvect.lensquared();
 
-		//angles of incidence
-		double theta_v = Math.PI / 2
-				- Math.acos(v_nv.dotproduct(vert) / v_nv.length()); //vertical angle of incidence
-		double theta_h = Math.PI / 2
-				- Math.acos(v_nh.dotproduct(horiz) / v_nh.length()); //horizontal angle of incidence
-
-		Point p = new Point((int) ((-theta_h / cam.fov) * getWidth() + getWidth() / 2), (int) ((-theta_v / cam.fov)
-				* getWidth() + getHeight() / 2));
-
-		return p;
-	}
-
-	public Point projectVertexOrthographic(Vertex v) {
-		Vertex horiz = cam.horizontal(), vert = cam.vertical();
-		v = v.subtract(cam.center); //set v to the vector from the camera to the point
-
-		//project vertex onto horiz, vert vectors
-		Vertex v_h = horiz.scalarproduct(v.dotproduct(horiz));
-		Vertex v_v = vert.scalarproduct(v.dotproduct(vert));
-
-		//get x,y coordinates of point on image plane (relative to horiz and vert vectors)
-		double x = v_h.dotproduct(horiz);
-		double y = v_v.dotproduct(vert);
-
-		Point p = new Point((int) ((-x / cam.fov) * getWidth() + getWidth() / 2), (int) ((-y / cam.fov)
-				* getWidth() + getHeight() / 2));
-
-		return p;
+			//assumes well formed solids, no weird normals
+			//if solid is well formed, then normals facing away from lamp are in shadow. 
+			if (dotprod > 0) {
+				if (dstsqr == 0) {
+					//if lamp is on the face's center, add full brightness to each color that the lamp emits
+					if (l.col.getRed() != 0) r += 1;
+					if (l.col.getGreen() != 0) g += 1;
+					if (l.col.getBlue() != 0) b += 1;
+					continue;
+				}
+				double intensity = l.intensity * dotprod / dstsqr; //square falloff
+				r += (l.col.getRed() / 255.0) * intensity;
+				g += (l.col.getGreen() / 255.0) * intensity;
+				b += (l.col.getBlue() / 255.0) * intensity;
+			}
+		}
+		Color col = colMultiply(m.col, r, g, b);
+		return col;
 	}
 
 	public void paintComponent(Graphics gr) {
 		super.paintComponent(gr);
 		Graphics2D g2d = (Graphics2D) gr;
-		//g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 		g2d.setColor(Color.BLACK);
+
+		long start = System.nanoTime();
+
+		//create zbuffer for screen, fill with 1's 
+		double[][] zbuffer = new double[getHeight()][getWidth()];
+		for (double[] row : zbuffer)
+			Arrays.fill(row, 1);
 
 		for (STLObject mesh : meshes) {
 			if (mesh == null) continue;
@@ -216,14 +230,17 @@ public class Renderer extends JPanel {
 			//generate set of projected points
 			HashMap<Vertex, Point> projectedPoints = new HashMap<Vertex, Point>();
 			for (Vertex v : mesh.vertices.values()) {
-				projectedPoints.put(v, projectVertex(v));
+				projectedPoints.put(v, cam
+						.projectVertex(v, getWidth(), getHeight()));
 			}
+			//sort faces
 			List<Face> faces = Arrays.asList(mesh.faces);
 			Collections.sort(faces, cam.zsortFaces);
 
 			Point v1, v2, v3;
 
-			if (wireframe) {
+			if (rendermode == 0) {
+				g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 				for (Edge e : mesh.edges.values()) {
 					v1 = projectedPoints.get(e.v1);
 					v2 = projectedPoints.get(e.v2);
@@ -231,7 +248,8 @@ public class Renderer extends JPanel {
 					g2d.drawLine(v1.x, v1.y, v2.x, v2.y);
 				}
 			}
-			else {
+			else if (rendermode == 1) {
+				Collections.reverse(faces);
 				for (Face f : faces) {
 
 					//optional backface culling
@@ -242,54 +260,120 @@ public class Renderer extends JPanel {
 					v3 = projectedPoints.get(f.vertices[2]);
 
 					if (v1 == null || v2 == null || v3 == null) continue;
-
-					//flat shading, no distance falloff
-					/*
-					 * For each lamp, increments r,g,b intensity values based on
-					 * direction, distance, and intensity of light.
-					 * These values are summed for all lamps, and then
-					 * multiplied by the color of the material (and clamped to
-					 * [0, 255])
-					 * Color values are handles separately.
-					 */
-					double r = 0, g = 0, b = 0;
-					for (Lamp l : lamps) {
-						Vertex lampvect = l.loc.subtract(f.center());
-
-						//determines angle between normal and lamp.
-						double dotprod = lampvect.getUnitVector()
-								.dotproduct(f.normal);
-						double dstsqr = lampvect.lensquared();
-
-						//assumes well formed solids, no weird normals
-						//if solid is well formed, then normals facing away from lamp are in shadow. 
-						if (dotprod > 0) {
-							if (dstsqr == 0) {
-								//if lamp is on the face's center, add full brightness to each color that the lamp emits
-								if (l.col.getRed() != 0) r += 1;
-								if (l.col.getGreen() != 0) g += 1;
-								if (l.col.getBlue() != 0) b += 1;
-								continue;
-							}
-							double intensity = l.intensity * dotprod / dstsqr; //square falloff
-							r += (l.col.getRed() / 255.0) * intensity;
-							g += (l.col.getGreen() / 255.0) * intensity;
-							b += (l.col.getBlue() / 255.0) * intensity;
-						}
-					}
-					Color col = colMultiply(mesh.mat.col, r, g, b);
-					g2d.setColor(col);
-					//g2d.setColor(new Color(f.hashCode()));
-
+					g2d.setColor(calcVertexLighting(f.center(), f.normal, mesh.mat));
 					g2d.fillPolygon(new int[] { v1.x, v2.x, v3.x }, new int[] {
 							v1.y, v2.y, v3.y }, 3);
 				}
 			}
+			else if (rendermode == 2) {
+
+				for (Face f : faces) {
+					//get triangle corners
+					v1 = projectedPoints.get(f.vertices[0]);
+					v2 = projectedPoints.get(f.vertices[1]);
+					v3 = projectedPoints.get(f.vertices[2]);
+
+					if (v1 == null || v2 == null || v3 == null) continue;
+
+					//zdepth values for vertices. For other pixels, lerp between these values 
+					double z1 = (f.vertices[0].subtract(cam.center).length() - cam.mindist)
+							/ (cam.maxdist - cam.mindist);
+					double z2 = (f.vertices[1].subtract(cam.center).length() - cam.mindist)
+							/ (cam.maxdist - cam.mindist);
+					double z3 = (cam.vertexDistance(f.vertices[2]) - cam.mindist)
+							/ (cam.maxdist - cam.mindist);
+					//store difference values. Makes interpolation later on slightly faster 
+					double dz21 = z2 - z1;
+					double dz31 = z3 - z1;
+
+					//triangle bounding box
+					int minX = Math.min(Math.min(v1.x, v2.x), v3.x);
+					int maxX = Math.max(Math.max(v1.x, v2.x), v3.x);
+					int minY = Math.min(Math.min(v1.y, v2.y), v3.y);
+					int maxY = Math.max(Math.max(v1.y, v2.y), v3.y);
+
+					//clip against screen bounds
+					minX = Math.max(minX, 0);
+					maxX = Math.min(maxX, getWidth() - 1);
+					minY = Math.max(minY, 0);
+					maxY = Math.min(maxY, getHeight() - 1);
+
+					//triangle edge setup
+					int A12 = v1.y - v2.y, B12 = v2.x - v1.x;
+					int A23 = v2.y - v3.y, B23 = v3.x - v2.x;
+					int A31 = v3.y - v1.y, B31 = v1.x - v3.x;
+
+					//initial barycentric coordinates at corner
+					Point p = new Point(minX, minY);
+					int w1_row = orient2D(v2, v3, p);
+					int w2_row = orient2D(v3, v1, p);
+					int w3_row = orient2D(v1, v2, p);
+
+					int w = orient2D(v1, v2, v3);
+					if (w == 0) continue;
+					int wsgn = Integer.signum(w);
+
+					double z;
+					Color col = null;
+
+					//rasterize
+					for (p.y = minY; p.y <= maxY; p.y++) {
+						//barycentric coordinates at the start of the row
+						int w1 = w1_row;
+						int w2 = w2_row;
+						int w3 = w3_row;
+
+						for (p.x = minX; p.x <= maxX; p.x++) {
+
+							//if w123 have the same sign as w, or are 0, then point is inside triangle
+							if ((Integer.signum(w1) == wsgn || w1 == 0)
+									&& (Integer.signum(w2) == wsgn || w2 == 0)
+									&& (Integer.signum(w3) == wsgn || w3 == 0)) {
+
+								//interpolate z value
+								z = z1 + w2 * dz21 / w + w3 * dz31 / w;
+
+								if (z < zbuffer[p.y][p.x]) {
+									zbuffer[p.y][p.x] = z;
+
+									//only calculate face color once
+									if (col == null)
+										col = calcVertexLighting(f.center(), f.normal, mesh.mat);
+
+									g2d.setColor(col);
+									g2d.drawLine(p.x, p.y, p.x, p.y);
+								}
+							}
+
+							//move one pixel to the right
+							w1 += A23;
+							w2 += A31;
+							w3 += A12;
+						}
+
+						//move one row down
+						w1_row += B23;
+						w2_row += B31;
+						w3_row += B12;
+					}
+				}
+			}
 		}
+		//System.out.println(System.nanoTime() - start);
 
 		for (Lamp l : lamps) {
-			Point lampcenter = projectVertex(l.loc);
+			Point lampcenter = cam
+					.projectVertex(l.loc, getWidth(), getHeight());
 			if (lampcenter == null) continue;
+
+			//obscure lamp if zbuffer is generated and lamp is occluded
+			if (rendermode == 2 && lampcenter.x >= 0
+					&& lampcenter.x < getWidth() && lampcenter.y > 0
+					&& lampcenter.y < getHeight()) {
+				double zlamp = (l.loc.subtract(cam.center).length() - cam.mindist)
+						/ (cam.maxdist - cam.mindist);
+				if (zbuffer[lampcenter.y][lampcenter.x] < zlamp) continue;
+			}
 
 			g2d.setColor(l.col);
 			g2d.fillOval(lampcenter.x - 5, lampcenter.y - 5, 10, 10);
@@ -305,9 +389,48 @@ public class Renderer extends JPanel {
 			g2d.drawLine(lampcenter.x + 11, lampcenter.y - 11, lampcenter.x + 8, lampcenter.y - 8);// ./
 			g2d.drawLine(lampcenter.x - 11, lampcenter.y + 11, lampcenter.x - 8, lampcenter.y + 8);// /`
 		}
-		//stop=System.nanoTime();
-		//System.out.println(stop-start);
 
+	}
+
+	/**
+	 * Basically cross product, gives twice signed area of triangle abc
+	 * Can also determine if a point p is inside a triangle abc
+	 * 
+	 * @param a
+	 *            Point A
+	 * @param b
+	 *            Point B
+	 * @param c
+	 *            Point C
+	 * @return (B-A) X (C-A)
+	 */
+	public int orient2D(Point a, Point b, Point c) {
+		return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+	}
+
+	/**
+	 * Finds the location of a point <code>p</code> on a face by linearly
+	 * interpolating a face's vertices using barycentric coordinates (normalized
+	 * to [0,1]).
+	 * 
+	 * @param f
+	 *            The face to be interpolated
+	 * @param w1
+	 *            the barycentric coordinate corresponding to the first vertex
+	 * @param w2
+	 *            the barycentric coordinate corresponding to the second vertex
+	 * @param w3
+	 *            the barycentric coordinate corresponding to the third vertex
+	 * @return
+	 */
+	public Vertex lerpVertex(Face f, double w1, double w2, double w3) {
+		double x = w1 * f.vertices[0].x + w2 * f.vertices[1].x + w3
+				* f.vertices[2].x;
+		double y = w1 * f.vertices[0].y + w2 * f.vertices[1].y + w3
+				* f.vertices[2].y;
+		double z = w1 * f.vertices[0].z + w2 * f.vertices[1].z + w3
+				* f.vertices[2].z;
+		return new Vertex(x, y, z);
 	}
 
 	public Color colMultiply(Color c, double r, double g, double b) {
