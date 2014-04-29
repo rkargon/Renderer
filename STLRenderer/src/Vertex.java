@@ -94,7 +94,7 @@ public class Vertex {
 	}
 	
 	public String toString() {
-		return "Vertex (" + x + ", " + y + ", " + z + ")";
+		return "<" + x + ", " + y + ", " + z + ">";
 	}
 
 	// Test method for math functions

@@ -43,10 +43,8 @@ public class Camera {
 
 		@Override
 		public int compare(Vertex v1, Vertex v2) {
-			v1 = v1.subtract(center);
-			v2 = v2.subtract(center);
-			double d1 = v1.dotproduct(normal());
-			double d2 = v2.dotproduct(normal());
+			double d1 = vertexDistance(v1);
+			double d2 = vertexDistance(v2);
 			return Double.compare(d1, d2);
 		}
 
@@ -117,15 +115,15 @@ public class Camera {
 	}
 
 	public Vertex horizontal() {
-		return new Vertex(axes.get(0, 0), axes.get(0, 1), axes.get(0, 2));
+		return new Vertex(axes.fastget(0), axes.fastget(1), axes.fastget(2));
 	}
 
 	public Vertex vertical() {
-		return new Vertex(axes.get(1, 0), axes.get(1, 1), axes.get(1, 2));
+		return new Vertex(axes.fastget(3), axes.fastget(4), axes.fastget(5));
 	}
 
 	public Vertex normal() {
-		return new Vertex(axes.get(2, 0), axes.get(2, 1), axes.get(2, 2));
+		return new Vertex(axes.fastget(6), axes.fastget(7), axes.fastget(8));
 	}
 
 	public double theta() {
@@ -200,7 +198,9 @@ public class Camera {
 		center = normal().scalarproduct(-center.length());
 	}
 
-	//TODO centerVertex(Vertex v)
+	public void centerVertex(Vertex v){
+		center = normal().subtract(v).scalarproduct(center.subtract(v).length());
+	}
 
 	public boolean verifyVectors() {
 		Vertex normal = normal(), horizontal = horizontal(), vertical = vertical();
@@ -227,24 +227,10 @@ public class Camera {
 		}
 	}
 
-	public double vertexOrthoDistance(Vertex v) {
-		v = v.subtract(center);
-
-		Vertex horiz = horizontal(), vert = vertical();
-		Vertex proj = horiz.scalarproduct(v.dotproduct(horiz))
-				.add(vert.scalarproduct(v.dotproduct(vert)));
-		return v.subtract(proj).length();
-	}
-
 	//returns the distance of a face from the camera, based on the average distance of the vertices
 	public double faceDistance(Face f) {
 
-		Vertex v1 = f.vertices[0].subtract(center), v2 = f.vertices[1]
-				.subtract(center), v3 = f.vertices[2].subtract(center);
-		Vertex normal = normal();
-
-		return (v1.dotproduct(normal) + v2.dotproduct(normal) + v3
-				.dotproduct(normal)) / 3;
+		return (vertexDistance(f.vertices[0]) + vertexDistance(f.vertices[1]) + vertexDistance(f.vertices[2])) / 3;
 	}
 
 	/**

@@ -60,10 +60,10 @@ public class Renderer extends JPanel {
 		meshes = new ArrayList<STLObject>();
 		meshes.add(mesh);
 		lamps = new ArrayList<Lamp>();
-		lamps.add(new Lamp(5, new Vertex(0, -3, 0), new Color(255, 100, 100)));
-		lamps.add(new Lamp(5, new Vertex(0, 0, 3), new Color(100, 255, 100)));
-		lamps.add(new Lamp(5, new Vertex(3, 0, 0), new Color(100, 100, 255)));
-		lamps.add(new Lamp(5, new Vertex(0, 3, 0), Color.WHITE));
+		lamps.add(new Lamp(5, new Vertex(0, -3, 0), new Color(255, 100, 100), 2));
+		lamps.add(new Lamp(5, new Vertex(0, 0, 3), new Color(100, 255, 100), 2));
+		lamps.add(new Lamp(5, new Vertex(3, 0, 0), new Color(100, 100, 255), 2));
+		lamps.add(new Lamp(5, new Vertex(0, 3, 0), Color.WHITE, 2));
 
 		this.setBackground(Color.WHITE);
 		cam = new Camera(-10, 0, 0, 0, 0, 0, 1, 0.1, 1000.0, false);
@@ -175,7 +175,7 @@ public class Renderer extends JPanel {
 	 * @param v
 	 *            the vertex for which to calculate lighting
 	 * @param n
-	 *            the normal of the vertex
+	 *            the normal of the vertex, normalized so ||n||=1
 	 * @param m
 	 *            the material of the face
 	 * 
@@ -184,14 +184,14 @@ public class Renderer extends JPanel {
 	public Color calcVertexLighting(Vertex v, Vertex n, Material m) {
 		//flat shading, no distance falloff
 
-		double r = 0, g = 0, b = 0;
+		double r = 0, g = 0, b = 0, spr=0, spg=0, spb=0;
 		for (Lamp l : lamps) {
 			Vertex lampvect = l.loc.subtract(v);
-
-			//determines angle between normal and lamp.
-			double dotprod = lampvect.getUnitVector().dotproduct(n);
+			Vertex lampvnorm = lampvect.getUnitVector(); //normalize lamp vector
+			
+			double dotprod = lampvnorm.dotproduct(n);
 			double dstsqr = lampvect.lensquared();
-
+			
 			//assumes well formed solids, no weird normals
 			//if solid is well formed, then normals facing away from lamp are in shadow. 
 			if (dotprod > 0) {
@@ -202,14 +202,43 @@ public class Renderer extends JPanel {
 					if (l.col.getBlue() != 0) b += 1;
 					continue;
 				}
-				double intensity = l.intensity * dotprod / dstsqr; //square falloff
-				r += (l.col.getRed() / 255.0) * intensity;
-				g += (l.col.getGreen() / 255.0) * intensity;
-				b += (l.col.getBlue() / 255.0) * intensity;
+
+				//n is normalized, so
+				//r = d- 2(d . n)n, where r = reflection, d = lampvector (normalized), n = normal
+				//Phong relfection: spec intensity = (relf*view)^sphardness * intensity
+				Vertex refl = lampvnorm.subtract(n.scalarproduct(2 * n
+						.dotproduct(lampvnorm)));
+				Vertex view = l.loc.subtract(cam.center).getUnitVector();
+				double spec_intensity = l.intensity * m.spintensity * Math.abs(Math.pow(view.dotproduct(refl), m.sphardness));
+				double diff_intensity = l.intensity*dotprod*m.diff_intensity;
+				
+				//calc falloff
+				switch (l.falloff) {
+				case 2:
+					diff_intensity *= 1.0 / dstsqr;
+					spec_intensity *= 1.0/dstsqr;
+					break;
+				case 1:
+					diff_intensity *= 1.0 / Math.sqrt(dstsqr);
+					spec_intensity *= 1.0/Math.sqrt(dstsqr);
+					break;
+				case 0:
+					break;
+				}
+
+				r += (l.col.getRed() / 255.0) * diff_intensity;
+				g += (l.col.getGreen() / 255.0) * diff_intensity;
+				b += (l.col.getBlue() / 255.0) * diff_intensity;
+
+				spr += (l.col.getRed() / 255.0) * spec_intensity;
+				spg += (l.col.getGreen() / 255.0) * spec_intensity;
+				spb += (l.col.getBlue() / 255.0) * spec_intensity;
+				
 			}
 		}
-		Color col = colMultiply(m.col, r, g, b);
-		return col;
+		Color col = colMultiply(m.diff_col, r, g, b); //diffuse color
+		Color spcol = colMultiply(m.spcol, spr, spg, spb);//specular color
+		return colAdd(col, spcol);
 	}
 
 	public void paintComponent(Graphics gr) {
@@ -276,9 +305,9 @@ public class Renderer extends JPanel {
 					if (v1 == null || v2 == null || v3 == null) continue;
 
 					//zdepth values for vertices. For other pixels, lerp between these values 
-					double z1 = (f.vertices[0].subtract(cam.center).length() - cam.mindist)
+					double z1 = (cam.vertexDistance(f.vertices[0]) - cam.mindist)
 							/ (cam.maxdist - cam.mindist);
-					double z2 = (f.vertices[1].subtract(cam.center).length() - cam.mindist)
+					double z2 = (cam.vertexDistance(f.vertices[1]) - cam.mindist)
 							/ (cam.maxdist - cam.mindist);
 					double z3 = (cam.vertexDistance(f.vertices[2]) - cam.mindist)
 							/ (cam.maxdist - cam.mindist);
@@ -433,6 +462,10 @@ public class Renderer extends JPanel {
 		return new Vertex(x, y, z);
 	}
 
+	public Color colAdd(Color a, Color b){
+		return new Color(Math.min(255, a.getRed()+b.getRed()), Math.min(255, a.getGreen()+b.getGreen()), Math.min(255, a.getBlue()+b.getBlue()));
+	}
+	
 	public Color colMultiply(Color c, double r, double g, double b) {
 		double col_r = c.getRed() / 255.0;
 		double col_g = c.getGreen() / 255.0;
@@ -450,7 +483,7 @@ public class Renderer extends JPanel {
 		f.setSize(800, 800);
 		f.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
-		Renderer p = new Renderer(new File("/Users/raphaelkargon/Documents/Programming/STL Renderer/suzanneplus.stl"));
+		Renderer p = new Renderer(new File("/Users/raphaelkargon/Documents/Programming/STL Renderer/suzanneplusplus.stl"));
 		f.getContentPane().add(p);
 		p.setFocusable(true);
 		p.requestFocusInWindow();
