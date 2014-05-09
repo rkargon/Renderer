@@ -8,12 +8,23 @@ public class Vertex {
 		this.z = z;
 	}
 
+	public double get(int axis){
+		if(axis==0) return x;
+		else if(axis==1) return y;
+		else return z;//default to z, even if axis!=2
+	}
+	public void set(int axis, double val){
+		if(axis==0) x=val;
+		else if(axis==1) y=val;
+		else z=val;//default to z, even if axis!=2
+	}
+
 	public Vertex subtract(Vertex v) {
 		return new Vertex(x - v.x, y - v.y, z - v.z);
 	}
 
 	public Vertex add(Vertex v) {
-		return new Vertex(x + v.x, y + v.y, z + v.y);
+		return new Vertex(x + v.x, y + v.y, z + v.z);
 	}
 
 	public Vertex scalarproduct(double a) {
@@ -63,7 +74,12 @@ public class Vertex {
 			z /= len;
 		}
 	}
-
+	
+	public Vertex reflection(Vertex normal){
+		//V- N * (2 * (V.N))
+		return this.subtract(normal.scalarproduct(2*this.dotproduct(normal)));
+	}
+	
 	/**
 	 * Generates a hash code based on the values of the x,y,z coordinates
 	 * Two Vertex objects have the same hash if they have the same coordinates
@@ -105,6 +121,18 @@ public class Vertex {
 	
 	public static Vertex ORIGIN(){
 		return new Vertex(0, 0, 0);
+	}
+
+	public static Matrix MatrixRows(Vertex... verts){
+		Matrix m = new Matrix(verts.length, 3);
+		
+		for(int i=0; i<verts.length; i++){
+			m.set(i, 0, verts[i].x);
+			m.set(i, 1, verts[i].y);
+			m.set(i, 2, verts[i].z);
+		}
+		
+		return m;
 	}
 
 }

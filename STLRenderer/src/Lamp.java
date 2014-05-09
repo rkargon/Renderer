@@ -23,14 +23,5 @@ public class Lamp {
 		this.col = c;
 		this.falloff=falloff;
 	}
-	
-	/**
-	 * Calculate the intensity, based on falloff, from the lamp to a point 
-	 * @param lampvect The vector from the lamp to 
-	 * @return
-	 */
-	public double calcIntensity(Vertex v){
-		v = v.subtract(loc);
-		return 0d;
-	}
+
 }

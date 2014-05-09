@@ -11,12 +11,14 @@ import java.util.HashMap;
 import javax.swing.Timer;
 
 public class STLObject {
-	public HashMap<Vertex, Vertex> vertices;//maps coordinates to vertices
+	public HashMap<Vertex, MeshVertex> vertices;//maps coordinates to vertices
 	public HashMap<Edge, Edge> edges;
 	public Face[] faces;
 	public String header;
 
 	public Material mat;
+	
+	public boolean smooth;
 
 	public STLObject(File f) throws IOException {
 		BufferedInputStream in = new BufferedInputStream(new FileInputStream(f));
@@ -32,13 +34,13 @@ public class STLObject {
 		in.read(face_tmp, 0, 4);
 		int nfaces = littleEndianInt(face_tmp, 0);
 		//set up faces and vertices data 
-		vertices = new HashMap<Vertex, Vertex>();
+		vertices = new HashMap<Vertex, MeshVertex>();
 		edges = new HashMap<Edge, Edge>();
 		faces = new Face[nfaces]; //set face array initial capacity to nfaces for better performance
 
 		//read each triangle
 		float x_tmp, y_tmp, z_tmp;
-		Vertex norm, v1, v2, v3;
+		MeshVertex norm, v1, v2, v3;
 		Edge e12, e23, e31; //eij is edge between vertices i and j
 		int i = 0; //face counter
 		while (in.read(face_tmp) == face_tmp.length) {
@@ -47,13 +49,13 @@ public class STLObject {
 			x_tmp = littleEndianFloat(face_tmp, 0);
 			y_tmp = littleEndianFloat(face_tmp, 4);
 			z_tmp = littleEndianFloat(face_tmp, 8);
-			norm = new Vertex(x_tmp, y_tmp, z_tmp);
+			norm = new MeshVertex(x_tmp, y_tmp, z_tmp);
 
 			//read vertex 1
 			x_tmp = littleEndianFloat(face_tmp, 12);
 			y_tmp = littleEndianFloat(face_tmp, 16);
 			z_tmp = littleEndianFloat(face_tmp, 20);
-			v1 = new Vertex(x_tmp, y_tmp, z_tmp);
+			v1 = new MeshVertex(x_tmp, y_tmp, z_tmp);
 			//if the vertex does not already exist, add it to the hash. Otherwise, set v1 to the existing vertex
 			if (vertices.containsKey(v1)) v1 = vertices.get(v1);
 			else vertices.put(v1, v1);
@@ -62,7 +64,7 @@ public class STLObject {
 			x_tmp = littleEndianFloat(face_tmp, 24);
 			y_tmp = littleEndianFloat(face_tmp, 28);
 			z_tmp = littleEndianFloat(face_tmp, 32);
-			v2 = new Vertex(x_tmp, y_tmp, z_tmp);
+			v2 = new MeshVertex(x_tmp, y_tmp, z_tmp);
 			//if the vertex does not already exist, add it to the hash. Otherwise, set v1 to the existing vertex
 			if (vertices.containsKey(v2)) v2 = vertices.get(v2);
 			else vertices.put(v2, v2);
@@ -71,7 +73,7 @@ public class STLObject {
 			x_tmp = littleEndianFloat(face_tmp, 36);
 			y_tmp = littleEndianFloat(face_tmp, 40);
 			z_tmp = littleEndianFloat(face_tmp, 44);
-			v3 = new Vertex(x_tmp, y_tmp, z_tmp);
+			v3 = new MeshVertex(x_tmp, y_tmp, z_tmp);
 			//if the vertex does not already exist, add it to the hash. Otherwise, set v1 to the existing vertex
 			if (vertices.containsKey(v3)) v3 = vertices.get(v3);
 			else vertices.put(v3, v3);
@@ -98,6 +100,8 @@ public class STLObject {
 				+ edges.size() + " edges, and " + vertices.size()
 				+ " vertices.");
 		in.close();
+		
+		smooth=true;
 	}
 
 	/* LITTLE ENDIAN IO */

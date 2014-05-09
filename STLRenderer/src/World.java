@@ -6,4 +6,9 @@ public class World {
 	public World(Color bgcol){
 		this.bgcol = bgcol;
 	}
+	
+	public Color getColor(Vertex dir){
+		//TODO add horizons etc
+		return bgcol;
+	}
 }

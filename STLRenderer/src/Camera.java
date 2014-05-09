@@ -2,188 +2,72 @@ import java.awt.Point;
 import java.util.Comparator;
 
 public class Camera {
-	//coordinates for the point the camera focuses on
 	public Vertex center;
-
-	//Normal vector, vector pointing 'up' relative to camera, and horizontal vector, pointing 'left' relative to camera
-	//{[horz]
-	// [vert]
-	// [norm]}
-	private Matrix axes;
-	private double theta, rho, psi;
-
-	//horizontal field of view (radians)
+	public Vertex normal;
+	public Vertex vert;
 	public double fov;
-
-	public double mindist;//minimum distance from the center of the camera for something to be rendered
-	public double maxdist;
-
+	public double mindist, maxdist;
 	public boolean ortho;
 
-	/* COMPARATORS */
-	//sort vertices and faces by their distance to the camera (from near to far)
-
-	public Comparator<Face> zsortFaces = new Comparator<Face>() {
-
-		@Override
-		public int compare(Face f1, Face f2) {
-			Vertex f1v1 = f1.vertices[0].subtract(center), f1v2 = f1.vertices[1]
-					.subtract(center), f1v3 = f1.vertices[2].subtract(center);
-			Vertex f2v1 = f2.vertices[0].subtract(center), f2v2 = f2.vertices[1]
-					.subtract(center), f2v3 = f2.vertices[2].subtract(center);
-
-			double f1d = (f1v1.length() + f1v2.length() + f1v3.length()) / 3;
-			double f2d = (f2v1.length() + f2v2.length() + f2v3.length()) / 3;
-			return Double.compare(f1d, f2d);
-		}
-
-	};
-
-	public Comparator<Vertex> zsortVerts = new Comparator<Vertex>() {
-
-		@Override
-		public int compare(Vertex v1, Vertex v2) {
-			double d1 = vertexDistance(v1);
-			double d2 = vertexDistance(v2);
-			return Double.compare(d1, d2);
-		}
-
-	};
+	//temporary vars used for ray casting.
+	private Vertex cx, cy; //horizontal and vertical vectors of image plane
 
 	public Camera() {
-		this(0, 0, 0, 0, 0, 0, 1, 0.01, 100, false);
+		this(new Vertex(-5, 0, 0), new Vertex(1, 0, 0), new Vertex(0, 0, 1), 1, 0.01, 100, false);
 	}
 
 	/**
-	 * Creates a camera object with the given center, rotation, field of view,
-	 * and minimum clipping distance.
 	 * 
-	 * @param x
-	 *            The x-coordinate of the center of the camera
-	 * @param y
-	 *            The y-coordinate of the center of the camera
-	 * @param z
-	 *            The z-coordinate of the center of the camera
-	 * @param theta
-	 *            The (global) rotation along the vertical axis of the camera
-	 * @param rho
-	 *            The (global) rotation along the horizontal axis of the camera
-	 * @param psi
-	 *            The (global) rotation along the normal axis of the camera
+	 * @param center
+	 *            Location of camera
+	 * @param normal
+	 *            Direction of view
+	 * @param vert
+	 *            Orientation (up direction) of view
 	 * @param fov
-	 *            The horizontal field of view, in radians, of the camera. View
-	 *            extends
-	 *            from -fov/2 to fov/2 radians from the camera's normal along
-	 *            the horizontal. (Field of view may be smaller along vertical,
-	 *            depending on aspect ratio of image). If
-	 *            fov>180, images will not repeat
-	 * @param mindist
-	 * @param maxdist
+	 *            Field of view (radians)
+	 * @param asp
+	 *            the aspect ratio
+	 * @param ortho
+	 *            whether view is perspective or orthogonal
 	 */
-	public Camera(double x, double y, double z, double theta, double rho, double psi, double fov, double mindist, double maxdist, boolean ortho) {
-		this.center = new Vertex(x, y, z);
-		this.theta = theta;
-		this.rho = rho;
-		this.psi = psi;
+	public Camera(Vertex center, Vertex normal, Vertex vert, double fov, double mindist, double maxdist, boolean ortho) {
+		super();
 
-		calcNormals();
+		if (fov == 0)
+			throw new IllegalArgumentException("Field of view cannot be 0.");
+		if (mindist <= 0)
+			throw new IllegalArgumentException("Minimum clipping distance must be greater than 0.");
+		if (normal.dotproduct(vert) != 0)
+			throw new IllegalArgumentException("Normal and vertical vectors of camera must be perpendicular");
 
-		if (fov <= 0)
-			throw new IllegalArgumentException("Field of view (" + fov
-					+ ") must be positive.");
+		this.center = center;
+		this.normal = normal;
+		this.vert = vert;
 		this.fov = fov;
-		this.mindist = Math.max(mindist, 0);
-		this.maxdist = Math.max(0, maxdist);
+		this.mindist = mindist;
+		this.maxdist = maxdist > 0 ? maxdist : Double.POSITIVE_INFINITY;
 		this.ortho = ortho;
+
+		calcImageVectors();
 	}
 
-	/**
-	 * Sets up axes matrix based on global rotations
-	 * All I know is that theta, rho ,and psi apply to GLOBAL Z, Y, and X axes
-	 */
-	public void calcNormals() {
-		double st = Math.sin(theta), ct = Math.cos(theta), sr = Math.sin(rho), cr = Math
-				.cos(rho), sp = Math.sin(psi), cp = Math.cos(psi);
-
-		axes = new Matrix(new double[][] {
-				//horizontal, ie local X
-				{ cr * st, ct * cp + st * sr * sp, cp * st * sr - ct * sp },
-				//vertical, ie local Y
-				{ -sr, cr * sp, cr * cp },
-				//normal, ie local Z
-				{ ct * cr, ct * sr * sp - cp * st, st * sp + ct * cp * sr } });
+	private void calcImageVectors() {
+		cx = normal.crossproduct(vert);
+		cy = cx.crossproduct(normal);
+		cx.normalize();
+		cy.normalize();
 	}
 
-	public Vertex horizontal() {
-		return new Vertex(axes.fastget(0), axes.fastget(1), axes.fastget(2));
-	}
-
-	public Vertex vertical() {
-		return new Vertex(axes.fastget(3), axes.fastget(4), axes.fastget(5));
-	}
-
-	public Vertex normal() {
-		return new Vertex(axes.fastget(6), axes.fastget(7), axes.fastget(8));
-	}
-
-	public double theta() {
-		return theta;
-	}
-
-	public double rho() {
-		return rho;
-	}
-
-	public double psi() {
-		return psi;
-	}
-
-	public void setGlobalRotations(double theta, double rho, double psi) {
-		this.theta = theta;
-		this.rho = rho;
-		this.psi = psi;
-
-		calcNormals();
-
-	}
-
-	public void rotateGlobalZ(double dtheta) {
-		theta += dtheta;
-		double st = Math.sin(dtheta), ct = Math.cos(dtheta);
-		Matrix rotZ = new Matrix(new double[] { ct, -st, 0, st, ct, 0, 0, 0, 1 }, 3, 3);
-		axes = axes.product(rotZ);
-	}
-
-	public void rotateGlobalY(double drho) {
-		rho += drho;
-		double sr = Math.sin(drho), cr = Math.cos(drho);
-		Matrix rotY = new Matrix(new double[] { cr, 0, sr, 0, 1, 0, -sr, 0, cr }, 3, 3);
-		axes = axes.product(rotY);
-	}
-
-	public void rotateGlobalX(double dpsi) {
-		psi += dpsi;
-		double sp = Math.sin(dpsi), cp = Math.cos(dpsi);
-		Matrix rotX = new Matrix(new double[] { 1, 0, 0, 0, cp, -sp, 0, sp, cp }, 3, 3);
-		axes = axes.product(rotX);
-	}
-
-	public void rotateLocalZ(double dtheta) {
-		rotateAxis(normal(), dtheta);
-	}
-
-	public void rotateLocalY(double drho) {
-		rotateAxis(vertical(), drho);
-	}
-
-	public void rotateLocalX(double dpsi) {
-		rotateAxis(horizontal(), dpsi);
+	public void centerOrigin() {
+		center = normal.scalarproduct(-center.length());
 	}
 
 	public void rotateAxis(Vertex a, double dtheta) {
 		a.normalize();
 		double l = a.x, m = a.y, n = a.z;
 		double s = Math.sin(dtheta), c = Math.cos(dtheta);
+		Matrix axes = Vertex.MatrixRows(vert, normal);
 		Matrix rot = new Matrix(new double[][] {
 				{ l * l * (1 - c) + c, m * l * (1 - c) - n * s,
 						n * l * (1 - c) + m * s },
@@ -192,97 +76,122 @@ public class Camera {
 				{ l * n * (1 - c) - m * s, m * n * (1 - c) + l * s,
 						n * n * (1 - c) + c } });
 		axes = axes.product(rot);
+
+		vert = new Vertex(axes.fastget(0), axes.fastget(1), axes.fastget(2));
+		normal = new Vertex(axes.fastget(3), axes.fastget(4), axes.fastget(5));
+		calcImageVectors();
+	}
+	public void rotateLocalZ(double dtheta) {
+		rotateAxis(normal, dtheta);
 	}
 
-	public void centerOrigin() {
-		center = normal().scalarproduct(-center.length());
+	public void rotateLocalY(double drho) {
+		rotateAxis(vert, drho);
 	}
 
-	public void centerVertex(Vertex v){
-		center = normal().subtract(v).scalarproduct(center.subtract(v).length());
+	public void rotateLocalX(double dpsi) {
+		rotateAxis(normal.crossproduct(vert), dpsi);
 	}
 
-	public boolean verifyVectors() {
-		Vertex normal = normal(), horizontal = horizontal(), vertical = vertical();
-
-		System.out.println("normal: " + normal);
-		System.out.println("horiz: " + horizontal);
-		System.out.println("vert: " + vertical);
-		System.out.println(normal().dotproduct(vertical));
-		System.out.println(normal().dotproduct(horizontal));
-		System.out.println(horizontal().dotproduct(vertical));
-		return (normal.dotproduct(vertical) == 0
-				&& normal.dotproduct(horizontal) == 0 && horizontal
-					.dotproduct(vertical) == 0);
-	}
-
-	public double vertexDistance(Vertex v) {
-		v = v.subtract(center);
+	public void setGlobalRotation(double theta, double rho, double psi) {
+		double st = Math.sin(theta), ct = Math.cos(theta), sr = Math.sin(rho), cr = Math
+				.cos(rho), sp = Math.sin(psi), cp = Math.cos(psi);
+		vert = new Vertex(-sr, cr * sp, cr * cp);
+		normal = new Vertex(ct * cr, ct * sr * sp - cp * st, st * sp + ct * cp * sr);
 		
-		if (ortho) {
-			return v.dotproduct(normal());
-		}
-		else {
-			return v.length();
-		}
 	}
-
-	//returns the distance of a face from the camera, based on the average distance of the vertices
-	public double faceDistance(Face f) {
-
-		return (vertexDistance(f.vertices[0]) + vertexDistance(f.vertices[1]) + vertexDistance(f.vertices[2])) / 3;
-	}
-
-	/**
-	 * Projects a 3d vertex onto the 2d panel's plane, returning the pixel
-	 * coordinates on which to draw the vertex.
-	 * 
-	 * @param v
-	 *            The vertex to be drawn
-	 * @param w
-	 *            the width of the window
-	 * @param h
-	 *            the height of the window
-	 * @return The pixel coordinates of the vertex drawn on the panel. Returns
-	 *         <code>(-1,-1)</code> if vertex is too close to camera (based on
-	 *         <code>cam.mindist</code>, the camera's clipping distance)
-	 */
+	
 	public Point projectVertex(Vertex v, int w, int h) {
-		Vertex norm = normal(), horiz = horizontal(), vert = vertical();
-		v = v.subtract(center); //set v to the vector from the camera to the point
-
 		Point p;
+		Vertex dv = v.subtract(center);
+		double x, y;
+
 		if (ortho) {
-			double fov = center.length();
-
-			//project vertex onto horiz, vert vectors
-			Vertex v_h = horiz.scalarproduct(v.dotproduct(horiz));
-			Vertex v_v = vert.scalarproduct(v.dotproduct(vert));
-
-			//get x,y coordinates of point on image plane (relative to horiz and vert vectors)
-			double x = v_h.dotproduct(horiz);
-			double y = v_v.dotproduct(vert);
-
-			p = new Point((int) ((-x / fov) * w + w / 2), (int) ((-y / fov) * w + h / 2));
+			x = dv.dotproduct(cx);
+			y = dv.dotproduct(cy);
 		}
 		else {
-			//is point too close to camera? (This is to avoid points on the camera's center, which don't have an angle of incidence)
-			if (v.dotproduct(norm) <= mindist) return null;
 
-			Vertex v_nv = v.subtract(horiz.scalarproduct(v.dotproduct(horiz))); //projection onto plane of normal and vert ('vertical plane')
-			Vertex v_nh = v.subtract(vert.scalarproduct(v.dotproduct(vert))); //projection onto plane of normal and horiz ('horizontal plane')
-
-			//angles of incidence
-			double theta_v = Math.PI / 2
-					- Math.acos(v_nv.dotproduct(vert) / v_nv.length()); //vertical angle of incidence
-			double theta_h = Math.PI / 2
-					- Math.acos(v_nh.dotproduct(horiz) / v_nh.length()); //horizontal angle of incidence
-
-			p = new Point((int) ((-theta_h / fov) * w + w / 2), (int) (-theta_v
-					/ fov * w + h / 2));
+			double len = dv.length();
+			if (dv.dotproduct(normal) <= 0 || len < mindist || len > maxdist) {
+				return null;
+			}
+			Vertex proj_horiz = dv
+					.subtract(cy.scalarproduct(dv.dotproduct(cy))); //projection onto horizontal plane
+			Vertex proj_vert = dv.subtract(cx.scalarproduct(dv.dotproduct(cx))); //projection onto horizontal plane
+			
+			x = Math.asin(proj_horiz.dotproduct(cx) / proj_horiz.length());
+			y = Math.asin(proj_vert.dotproduct(cy) / proj_vert.length());
 		}
 
+		double img_w = 2 * Math.tan(fov / 2);
+		double img_h = (img_w * h / w);
+		double px = (0.5 + x / img_w) * w;
+		double py = (0.5 - y / img_h) * h;
+		p = new Point((int) px, (int) py);
 		return p;
+	}
+
+	public Comparator<Face> zsortFaces = new Comparator<Face>() {
+		public int compare(Face f1, Face f2) {
+			return Double.compare(faceDepth(f1), faceDepth(f2));
+		};
+	};
+	public Comparator<Vertex> zsortVertices = new Comparator<Vertex>() {
+		public int compare(Vertex v1, Vertex v2) {
+			return Double.compare(vertexDepth(v1), vertexDepth(v2));
+		};
+	};
+
+	public double vertexDepth(Vertex v) {
+		v = v.subtract(center);
+
+		if (ortho) {
+			return v.dotproduct(normal);
+		}
+		else {
+			double d = v.length();
+			if (v.dotproduct(normal) < 0) d = -d;
+			return d;
+		}
+	}
+
+	public double faceDepth(Face f) {
+		return (vertexDepth(f.vertices[0]) + vertexDepth(f.vertices[1]) + vertexDepth(f.vertices[2])) / 3;
+	}
+
+	public Vertex[] castRay(double x, double y, int w, int h) {
+		double img_w = 2 * Math.tan(fov / 2);
+		double img_h = (img_w * h / w);
+
+		x = x / w - 0.5;
+		y = y / h - 0.5;
+
+		Vertex[] ray = new Vertex[2];
+
+		if (ortho) {
+			ray[1] = normal;
+			//center + cx * (x*img_w) + cy * (y*img_h)
+			ray[0] = center.add(cx.scalarproduct(x * img_w))
+					.add(cy.scalarproduct(-y * img_h)); //-y because of java panel coordinates
+			return ray;
+		}
+		else {
+			ray[0] = center;
+			//normal + cx * (x*img_w) + cy * (y*img_h)
+			ray[1] = normal.add(cx.scalarproduct(x * img_w))
+					.add(cy.scalarproduct(-y * img_h)).getUnitVector();
+			return ray;
+		}
+	}
+
+	public static void main(String[] args) {
+		//TODO figure out project/raycast discrepancy Probably not a big deal
+		//TODO seems like projection code is the one that's messed up. Raycasting is doing it's job, circles are circular
+		Camera cam = new Camera();
+		Vertex[] v = cam.castRay(100, 100, 500, 500);
+		System.out.println("origin: " + v[0] + " direction: " + v[1]);
+		System.out.println(cam.projectVertex(v[0].add(v[1]), 500, 500));
 	}
 
 }
