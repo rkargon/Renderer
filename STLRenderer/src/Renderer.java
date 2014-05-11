@@ -29,11 +29,13 @@ import javax.swing.Timer;
  * 
  */
 public class Renderer extends JPanel {
-	//ArrayList<STLObject> meshes;
-	STLObject mesh;
+	ArrayList<Object3D> meshes;
+	Object3D selected = null;
 	ArrayList<Lamp> lamps;
 	Camera cam;
 	World world;
+
+	List<Face> faces;
 
 	//0 - wireframe
 	//1 - painter's algorithm
@@ -58,15 +60,28 @@ public class Renderer extends JPanel {
 		}
 	});
 
-	public Renderer(File f) {
+	private long raysTraced = 0;//used for performance stats
 
+	public Renderer() {
+		meshes = new ArrayList<Object3D>();
+
+		Object3D mesh;
+		File f = new File("/Users/raphaelkargon/Documents/Programming/STL Renderer/sphere.stl");
 		try {
-			mesh = new STLObject(f);
-			mesh.mat = new Material(Color.WHITE, 1, Color.WHITE, 1, 128, .3);
+			mesh = new Object3D(f);
+			mesh.mat = new Material(Color.WHITE);
+			meshes.add(mesh);
 		}
 		catch (IOException e) {
-			mesh = null;
 			e.printStackTrace();
+		}
+		
+		
+		/* Compile list of faces. Add meshes before this point */
+		
+		faces = new ArrayList<Face>();
+		for (Object3D meshtmp : meshes) {
+			Collections.addAll(faces, meshtmp.faces);
 		}
 
 		lamps = new ArrayList<Lamp>();
@@ -77,7 +92,7 @@ public class Renderer extends JPanel {
 
 		this.setBackground(Color.WHITE);
 		cam = new Camera();
-		world = new World(Color.WHITE);
+		world = new World(Color.WHITE, new Color(100, 100, 255));
 
 		this.addListeners();
 	}
@@ -91,21 +106,42 @@ public class Renderer extends JPanel {
 			@Override
 			public void mousePressed(MouseEvent e) {
 				if (e.getButton() == MouseEvent.BUTTON2) {
-					cam.setGlobalRotation(0, 0, 0);
-					cam.centerOrigin();
+					//if camera is already centered on origin, reset rotation
+					if (cam.focus.lensquared() == 0) {
+						cam.setGlobalRotation(0, 0, 0);
+					}
+					else {
+						cam.focus = Vertex.ORIGIN();
+					}
+					cam.centerFocus();
 					repaint();
+				}
+				else if (e.getButton() == MouseEvent.BUTTON3) {
+					Vertex[] ray = cam
+							.castRay(e.getX(), e.getY(), getWidth(), getHeight());
+					Face f = rayIntersect(faces, ray[0], ray[1], false, null);
+					if(f==null || f.obj==selected) selected=null;
+					else selected=f.obj;
 				}
 
 				mousePt = e.getPoint();
+				repaint();
 			}
 
 			@Override
 			public void mouseDragged(MouseEvent e) {
 				Point p = e.getPoint();
-				cam.rotateLocalY((p.x - mousePt.x) / 100.0);
-				cam.rotateLocalX((p.y - mousePt.y) / 100.0);
-				cam.centerOrigin();
+				double dx = p.x - mousePt.x;
+				double dy = p.y - mousePt.y;
 
+				if (e.isShiftDown()) {
+					cam.shiftFocus(-dx / 100, dy / 100);
+				}
+				else {
+					cam.rotateLocalY(dx / 100.0);
+					cam.rotateLocalX(dy / 100.0);
+				}
+				cam.centerFocus();
 				mousePt = p;
 				repaint();
 			}
@@ -113,7 +149,7 @@ public class Renderer extends JPanel {
 			@Override
 			public void mouseWheelMoved(MouseWheelEvent e) {
 				double zoomfactor = Math.pow(1.05, e.getWheelRotation());
-				cam.center = cam.center.scalarproduct(zoomfactor);
+				cam.zoom(zoomfactor);
 				repaint();
 			}
 		};
@@ -150,7 +186,8 @@ public class Renderer extends JPanel {
 					}
 				}
 				else if (e.getKeyCode() == KeyEvent.VK_S) {
-					mesh.smooth = !mesh.smooth;
+					for (Object3D mesh : meshes)
+						mesh.smooth = !mesh.smooth;
 				}
 				else if (e.getKeyCode() == KeyEvent.VK_Z) {
 					if (e.isShiftDown()) {
@@ -166,7 +203,7 @@ public class Renderer extends JPanel {
 					cam.ortho = !cam.ortho;
 				}
 
-				cam.centerOrigin();
+				cam.centerFocus();
 				repaint();
 			}
 		};
@@ -175,12 +212,6 @@ public class Renderer extends JPanel {
 	}
 
 	/**
-	 * For each lamp, increments r,g,b intensity values based on
-	 * direction, distance, and intensity of light.
-	 * These values are summed for all lamps, and then
-	 * multiplied by the color of the material (and clamped to
-	 * [0, 255])
-	 * Color values are handles separately.
 	 * 
 	 * @param v
 	 *            the vertex for which to calculate lighting
@@ -199,54 +230,54 @@ public class Renderer extends JPanel {
 			Vertex lampvect = l.loc.subtract(v);
 			Vertex lampvnorm = lampvect.getUnitVector(); //normalize lamp vector
 
+			Vertex view = cam.viewVector(v).getUnitVector();
+			//if lamp and view are on different sides of face, skip this lamp.
+			if (n.dotproduct(lampvect) * n.dotproduct(view) > 0) continue;
+
 			double dotprod = lampvnorm.dotproduct(n);
 			double dstsqr = lampvect.lensquared();
 
-			//assumes well formed solids, no weird normals
 			//if solid is well formed, then normals facing away from lamp are in shadow. 
-			if (dotprod > 0) {
-				if (dstsqr == 0) {
-					//if lamp is on the face's center, add full brightness to each color that the lamp emits
-					if (l.col.getRed() != 0) r += 1;
-					if (l.col.getGreen() != 0) g += 1;
-					if (l.col.getBlue() != 0) b += 1;
-					continue;
-				}
-
-				//n is normalized, so
-				//r = d- 2(d . n)n, where r = reflection, d = lampvector (normalized), n = normal
-				//Phong relfection: spec intensity = (relf*view)^sphardness * intensity
-				Vertex refl = lampvnorm.reflection(n);
-				Vertex view = v.subtract(cam.center).getUnitVector();
-				double spec_intensity = l.intensity
-						* m.spintensity
-						* Math.max(0, Math.pow(view.dotproduct(refl), m.sphardness));
-				double diff_intensity = l.intensity * Math.abs(dotprod)
-						* m.diff_intensity;
-
-				//calc falloff
-				switch (l.falloff) {
-				case 2:
-					diff_intensity *= 1.0 / dstsqr;
-					spec_intensity *= 1.0 / dstsqr;
-					break;
-				case 1:
-					diff_intensity *= 1.0 / Math.sqrt(dstsqr);
-					spec_intensity *= 1.0 / Math.sqrt(dstsqr);
-					break;
-				case 0:
-					break;
-				}
-
-				r += (l.col.getRed() / 255.0) * diff_intensity;
-				g += (l.col.getGreen() / 255.0) * diff_intensity;
-				b += (l.col.getBlue() / 255.0) * diff_intensity;
-
-				spr += (l.col.getRed() / 255.0) * spec_intensity;
-				spg += (l.col.getGreen() / 255.0) * spec_intensity;
-				spb += (l.col.getBlue() / 255.0) * spec_intensity;
-
+			if (dstsqr == 0) {
+				//if lamp is on the face's center, add full brightness to each color that the lamp emits
+				if (l.col.getRed() != 0) r += 1;
+				if (l.col.getGreen() != 0) g += 1;
+				if (l.col.getBlue() != 0) b += 1;
+				continue;
 			}
+
+			//n is normalized, so
+			//r = d- 2(d . n)n, where r = reflection, d = lampvector (normalized), n = normal
+			//Phong relfection: spec intensity = (relf*view)^sphardness * intensity
+			Vertex refl = lampvnorm.reflection(n);
+			double spec_intensity = l.intensity
+					* m.spintensity
+					* Math.max(0, Math.pow(view.dotproduct(refl), m.sphardness));
+			double diff_intensity = l.intensity * Math.abs(dotprod)
+					* m.diff_intensity;
+
+			//calc falloff
+			switch (l.falloff) {
+			case 2:
+				diff_intensity *= 1.0 / dstsqr;
+				spec_intensity *= 1.0 / dstsqr;
+				break;
+			case 1:
+				diff_intensity *= 1.0 / Math.sqrt(dstsqr);
+				spec_intensity *= 1.0 / Math.sqrt(dstsqr);
+				break;
+			case 0:
+				break;
+			}
+
+			r += (l.col.getRed() / 255.0) * diff_intensity;
+			g += (l.col.getGreen() / 255.0) * diff_intensity;
+			b += (l.col.getBlue() / 255.0) * diff_intensity;
+
+			spr += (l.col.getRed() / 255.0) * spec_intensity;
+			spg += (l.col.getGreen() / 255.0) * spec_intensity;
+			spb += (l.col.getBlue() / 255.0) * spec_intensity;
+
 		}
 		Color col = colMultiply(m.diff_col, r, g, b); //diffuse color
 		Color spcol = colMultiply(m.spcol, spr, spg, spb);//specular color
@@ -270,23 +301,14 @@ public class Renderer extends JPanel {
 	public Color traceRay(Vertex origin, Vertex ray, List<Face> faces, int depth) {
 		//TODO add transmission rays
 
-		Face f = null;
-		Vertex tuv = new Vertex(0, 0, 0);
-		Vertex tuvtmp = tuv;
-		double zmin = Double.NaN;
-		for (Face ftmp : faces) {
-			if (ftmp.intersectRayTriangle(origin, ray, tuvtmp)
-					&& (tuvtmp.x < zmin || zmin != zmin)) {
-				zmin = tuvtmp.x;
-				f = ftmp;
-				tuv = tuvtmp.clone();
-			}
-		}
+		raysTraced++;//For performance stats
 
+		Vertex tuv = new Vertex(0, 0, 0);
+		Face f = rayIntersect(faces, origin, ray, false, tuv);
 		if (f == null) return world.getColor(ray);
 		else {
 			boolean inShadow;
-			Material m = mesh.mat;
+			Material m = f.obj.mat;
 
 			//calculate vertex location based on tuv
 			Vertex v = f.vertices[0].scalarproduct(1 - tuv.y - tuv.z)
@@ -294,7 +316,7 @@ public class Renderer extends JPanel {
 					.add(f.vertices[2].scalarproduct(tuv.z));
 			//calculate normal
 			Vertex n;
-			if (mesh.smooth) {
+			if (f.obj.smooth) {
 				Vertex n0 = f.vertices[0].vertexNormal();
 				Vertex n1 = f.vertices[1].vertexNormal();
 				Vertex n2 = f.vertices[2].vertexNormal();
@@ -312,7 +334,7 @@ public class Renderer extends JPanel {
 				inShadow = false;
 				Vertex lampvect = l.loc.subtract(v);
 
-				//if lamp and view are on different sides of face, skip this lamp. ( >0 is used because viewvector points to face, while lampvector points away)
+				//if lamp and view are on different sides of face, skip this lamp.
 				if (n.dotproduct(lampvect) * n.dotproduct(ray) > 0) continue;
 
 				for (Face ftmp : faces) {
@@ -321,7 +343,8 @@ public class Renderer extends JPanel {
 						break;
 					}
 				}
-				if (inShadow) continue;
+				if (rayIntersect(faces, v, lampvect, true, null) != null)
+					continue;
 
 				Vertex lampvnorm = lampvect.getUnitVector();
 				double dotprod = lampvnorm.dotproduct(n);
@@ -371,8 +394,7 @@ public class Renderer extends JPanel {
 			Color diffcol = colMultiply(m.diff_col, r, g, b); //diffuse color
 			Color spcol = colMultiply(m.spcol, spr, spg, spb);//specular color	
 			Color totcol = colAdd(diffcol, spcol);
-			//if (true) return totcol;
-			if (depth >= RAY_DEPTH) return totcol;
+			if (depth >= RAY_DEPTH || (m.relf_intensity == 0)) return totcol;
 
 			Vertex refl = ray.reflection(n);
 			Color refcol = traceRay(v, refl, faces, depth + 1);
@@ -398,18 +420,15 @@ public class Renderer extends JPanel {
 		for (double[] row : zbuffer)
 			Arrays.fill(row, 1);
 
-		if (mesh != null) {
+		//combine data of all meshes
+		List<Edge> edges = new ArrayList<Edge>();
+		HashMap<MeshVertex, Point> vertexPixels = new HashMap<MeshVertex, Point>(); //vertex pixel locations
+		HashMap<MeshVertex, Double> vertexZvalues = new HashMap<MeshVertex, Double>(); //vertex Z values
+		HashMap<MeshVertex, Color> vertexColors = new HashMap<MeshVertex, Color>(); //vertex colors
+		for (Object3D mesh : meshes) {
+			Collections.addAll(edges, mesh.edges);
 
-			//sort faces, nearest to farthest
-			List<Face> faces = Arrays.asList(mesh.faces);
-			Collections.sort(faces, cam.zsortFaces);
-
-			//generate vertex data
-			HashMap<MeshVertex, Point> vertexPixels = new HashMap<MeshVertex, Point>(); //vertex pixel locations
-			HashMap<MeshVertex, Double> vertexZvalues = new HashMap<MeshVertex, Double>(); //vertex Z values
-			HashMap<MeshVertex, Color> vertexColors = new HashMap<MeshVertex, Color>(); //vertex colors
-
-			for (MeshVertex v : mesh.vertices.values()) {
+			for (MeshVertex v : mesh.vertices) {
 				vertexPixels.put(v, cam
 						.projectVertex(v, getWidth(), getHeight()));
 				if (rendermode > 1) {
@@ -421,146 +440,157 @@ public class Renderer extends JPanel {
 					}
 				}
 			}
+		}
+		Collections.sort(faces, cam.zsortFaces);
 
-			Point v1, v2, v3;
-			double z1, z2, z3;
-			Color v1col, v2col, v3col;
+		Point v1, v2, v3;
+		double z1, z2, z3;
+		Color v1col, v2col, v3col;
 
-			if (rendermode == 0) {
-				g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-				for (Edge e : mesh.edges.values()) {
-					v1 = vertexPixels.get(e.v1);
-					v2 = vertexPixels.get(e.v2);
-					if (v1 == null || v2 == null) continue;
-					g2d.drawLine(v1.x, v1.y, v2.x, v2.y);
-				}
+		if (rendermode == 0) {
+			g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+			for (Edge e : edges) {
+				v1 = vertexPixels.get(e.v1);
+				v2 = vertexPixels.get(e.v2);
+				if (v1 == null || v2 == null) continue;
+				g2d.drawLine(v1.x, v1.y, v2.x, v2.y);
 			}
-			else if (rendermode == 1) {
-				Collections.reverse(faces);
-				for (Face f : faces) {
+		}
+		else if (rendermode == 1) {
+			Collections.reverse(faces);
+			for (Face f : faces) {
 
-					//optional backface culling
-					//if(f.normal.dotproduct(cam.normal()) > 0.01) continue;
+				//optional backface culling
+				//if(f.normal.dotproduct(cam.normal()) > 0.01) continue;
 
-					v1 = vertexPixels.get(f.vertices[0]);
-					v2 = vertexPixels.get(f.vertices[1]);
-					v3 = vertexPixels.get(f.vertices[2]);
+				v1 = vertexPixels.get(f.vertices[0]);
+				v2 = vertexPixels.get(f.vertices[1]);
+				v3 = vertexPixels.get(f.vertices[2]);
 
-					if (v1 == null || v2 == null || v3 == null) continue;
-					g2d.setColor(calcPointLighting(f.center(), f.normal, mesh.mat));
-					g2d.fillPolygon(new int[] { v1.x, v2.x, v3.x }, new int[] {
-							v1.y, v2.y, v3.y }, 3);
-				}
+				if (v1 == null || v2 == null || v3 == null) continue;
+				g2d.setColor(calcPointLighting(f.center(), f.normal, f.obj.mat));
+				g2d.fillPolygon(new int[] { v1.x, v2.x, v3.x }, new int[] {
+						v1.y, v2.y, v3.y }, 3);
 			}
-			else if (rendermode == 2) {
+		}
+		else if (rendermode == 2) {
 
-				for (Face f : faces) {
-					//get triangle corners
-					v1 = vertexPixels.get(f.vertices[0]);
-					v2 = vertexPixels.get(f.vertices[1]);
-					v3 = vertexPixels.get(f.vertices[2]);
+			for (Face f : faces) {
+				//get triangle corners
+				v1 = vertexPixels.get(f.vertices[0]);
+				v2 = vertexPixels.get(f.vertices[1]);
+				v3 = vertexPixels.get(f.vertices[2]);
 
-					if (v1 == null || v2 == null || v3 == null) continue;
+				if (v1 == null || v2 == null || v3 == null) continue;
 
-					//zdepth values for vertices. For other pixels, lerp between these values 
-					z1 = vertexZvalues.get(f.vertices[0]);
-					z2 = vertexZvalues.get(f.vertices[1]);
-					z3 = vertexZvalues.get(f.vertices[2]);
+				//zdepth values for vertices. For other pixels, lerp between these values 
+				z1 = vertexZvalues.get(f.vertices[0]);
+				z2 = vertexZvalues.get(f.vertices[1]);
+				z3 = vertexZvalues.get(f.vertices[2]);
 
-					//store difference values. Makes interpolation later on slightly faster 
-					double dz21 = z2 - z1;
-					double dz31 = z3 - z1;
+				//store difference values. Makes interpolation later on slightly faster 
+				double dz21 = z2 - z1;
+				double dz31 = z3 - z1;
 
-					Vertex fcenter = f.center();//face center
+				Vertex fcenter = f.center();//face center
 
-					//vertex colors, for smooth shading (Gouraud shading, faster than Phong)
-					v1col = vertexColors.get(f.vertices[0]);
-					v2col = vertexColors.get(f.vertices[1]);
-					v3col = vertexColors.get(f.vertices[2]);
+				//vertex colors, for smooth shading (Gouraud shading, faster than Phong)
+				v1col = vertexColors.get(f.vertices[0]);
+				v2col = vertexColors.get(f.vertices[1]);
+				v3col = vertexColors.get(f.vertices[2]);
 
-					//triangle bounding box
-					int minX = Math.min(Math.min(v1.x, v2.x), v3.x);
-					int maxX = Math.max(Math.max(v1.x, v2.x), v3.x);
-					int minY = Math.min(Math.min(v1.y, v2.y), v3.y);
-					int maxY = Math.max(Math.max(v1.y, v2.y), v3.y);
+				//triangle bounding box
+				int minX = Math.min(Math.min(v1.x, v2.x), v3.x);
+				int maxX = Math.max(Math.max(v1.x, v2.x), v3.x);
+				int minY = Math.min(Math.min(v1.y, v2.y), v3.y);
+				int maxY = Math.max(Math.max(v1.y, v2.y), v3.y);
 
-					//clip against screen bounds
-					minX = Math.max(minX, 0);
-					maxX = Math.min(maxX, getWidth() - 1);
-					minY = Math.max(minY, 0);
-					maxY = Math.min(maxY, getHeight() - 1);
+				//clip against screen bounds
+				minX = Math.max(minX, 0);
+				maxX = Math.min(maxX, getWidth() - 1);
+				minY = Math.max(minY, 0);
+				maxY = Math.min(maxY, getHeight() - 1);
 
-					//triangle edge setup
-					int A12 = v1.y - v2.y, B12 = v2.x - v1.x;
-					int A23 = v2.y - v3.y, B23 = v3.x - v2.x;
-					int A31 = v3.y - v1.y, B31 = v1.x - v3.x;
+				//triangle edge setup
+				int A12 = v1.y - v2.y, B12 = v2.x - v1.x;
+				int A23 = v2.y - v3.y, B23 = v3.x - v2.x;
+				int A31 = v3.y - v1.y, B31 = v1.x - v3.x;
 
-					//initial barycentric coordinates at corner
-					Point p = new Point(minX, minY);
-					int w1_row = orient2D(v2, v3, p);
-					int w2_row = orient2D(v3, v1, p);
-					int w3_row = orient2D(v1, v2, p);
+				//initial barycentric coordinates at corner
+				Point p = new Point(minX, minY);
+				int w1_row = orient2D(v2, v3, p);
+				int w2_row = orient2D(v3, v1, p);
+				int w3_row = orient2D(v1, v2, p);
 
-					int w = orient2D(v1, v2, v3);
-					if (w == 0) continue;
-					int wsgn = Integer.signum(w);
+				int w = orient2D(v1, v2, v3);
+				if (w == 0) continue;
+				int wsgn = Integer.signum(w);
 
-					double z;
-					Color col = null;
+				double z;
+				Color col = null;
 
-					//rasterize
-					for (p.y = minY; p.y <= maxY; p.y++) {
-						//barycentric coordinates at the start of the row
-						int w1 = w1_row;
-						int w2 = w2_row;
-						int w3 = w3_row;
+				//rasterize
+				for (p.y = minY; p.y <= maxY; p.y++) {
+					//barycentric coordinates at the start of the row
+					int w1 = w1_row;
+					int w2 = w2_row;
+					int w3 = w3_row;
 
-						for (p.x = minX; p.x <= maxX; p.x++) {
+					for (p.x = minX; p.x <= maxX; p.x++) {
 
-							//if w123 have the same sign as w, or are 0, then point is inside triangle
-							if ((Integer.signum(w1) == wsgn || w1 == 0)
-									&& (Integer.signum(w2) == wsgn || w2 == 0)
-									&& (Integer.signum(w3) == wsgn || w3 == 0)) {
+						//if w123 have the same sign as w, or are 0, then point is inside triangle
+						if ((Integer.signum(w1) == wsgn || w1 == 0)
+								&& (Integer.signum(w2) == wsgn || w2 == 0)
+								&& (Integer.signum(w3) == wsgn || w3 == 0)) {
 
-								//interpolate z value
-								z = z1 + w2 * dz21 / w + w3 * dz31 / w;
+							//interpolate z value
+							z = z1 + w2 * dz21 / w + w3 * dz31 / w;
 
-								if (z < zbuffer[p.y][p.x]) {
-									zbuffer[p.y][p.x] = z;
+							if (z < zbuffer[p.y][p.x]) {
+								zbuffer[p.y][p.x] = z;
 
-									//only calculate face color once, unless smooth shading is enabled
-									if (mesh.smooth) {
-										col = lerpColor(v1col, v2col, v3col, (double) w1
-												/ w, (double) w2 / w, (double) w3
-												/ w);
-									}
-									else {
-										if (col == null) {
-											col = calcPointLighting(fcenter, f.normal, mesh.mat);
-										}
-									}
-
-									g2d.setColor(col);
-									g2d.drawLine(p.x, p.y, p.x, p.y);
+								//only calculate face color once, unless smooth shading is enabled
+								if (f.obj.smooth) {
+									col = lerpColor(v1col, v2col, v3col, (double) w1
+											/ w, (double) w2 / w, (double) w3
+											/ w);
 								}
-							}
+								else {
+									if (col == null) {
+										col = calcPointLighting(fcenter, f.normal, f.obj.mat);
+									}
+								}
 
-							//move one pixel to the right
-							w1 += A23;
-							w2 += A31;
-							w3 += A12;
+								g2d.setColor(col);
+								g2d.drawLine(p.x, p.y, p.x, p.y);
+							}
 						}
 
-						//move one row down
-						w1_row += B23;
-						w2_row += B31;
-						w3_row += B12;
+						//move one pixel to the right
+						w1 += A23;
+						w2 += A31;
+						w3 += A12;
 					}
+
+					//move one row down
+					w1_row += B23;
+					w2_row += B31;
+					w3_row += B12;
 				}
 			}
 		}
 
-		//System.out.println(System.nanoTime() - start);
+		//draw wireframe of selected
+		if (selected!=null) {
+			g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+			g2d.setColor(new Color(255, 100, 0));
+			for (Edge e : selected.edges) {
+				v1 = vertexPixels.get(e.v1);
+				v2 = vertexPixels.get(e.v2);
+				if (v1 == null || v2 == null) continue;
+				g2d.drawLine(v1.x, v1.y, v2.x, v2.y);
+			}
+		}
 
 		for (Lamp l : lamps) {
 			Point lampcenter = cam
@@ -603,12 +633,10 @@ public class Renderer extends JPanel {
 		g.setColor(Color.WHITE);
 		g.fillRect(0, 0, getWidth(), getHeight());
 
-		//sort faces, nearest to farthest
-		List<Face> faces = Arrays.asList(mesh.faces);
-
 		g.setColor(Color.BLACK);
 		Point p = new Point(0, 0);
 		Vertex[] ray;
+		long start = System.nanoTime();
 		for (p.y = 0; p.y < getHeight(); p.y++) {
 			for (p.x = 0; p.x < getWidth(); p.x++) {
 				//to show status
@@ -620,7 +648,32 @@ public class Renderer extends JPanel {
 				g.drawLine(p.x, p.y, p.x, p.y);
 			}
 		}
+		long stop = System.nanoTime();
+		long time = stop - start;
+		System.out.println(faces.size() + " faces. Traced " + raysTraced
+				+ " rays in " + time + "ns, or " + raysTraced
+				/ (time / 1_000_000_000.0) + " rays per second.");
 
+	}
+
+	public Face rayIntersect(List<Face> faces, Vertex origin, Vertex ray,
+			boolean lazy, Vertex tuv) {
+		Face f = null;
+		if (tuv == null) tuv = new Vertex(0, 0, 0);
+		Vertex tuvtmp = new Vertex(0, 0, 0);
+		double zmin = Double.NaN;
+
+		for (Face ftmp : faces) {
+			if (ftmp.intersectRayTriangle(origin, ray, tuvtmp)
+					&& (tuvtmp.x < zmin || zmin != zmin)) {
+				zmin = tuvtmp.x;
+				f = ftmp;
+				tuv.setVertex(tuvtmp);
+				if (lazy) return f;
+			}
+		}
+
+		return f;
 	}
 
 	/**
@@ -635,7 +688,7 @@ public class Renderer extends JPanel {
 	 *            Point C
 	 * @return (B-A) X (C-A)
 	 */
-	public int orient2D(Point a, Point b, Point c) {
+	public static int orient2D(Point a, Point b, Point c) {
 		return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
 	}
 
@@ -646,7 +699,7 @@ public class Renderer extends JPanel {
 	 * 
 	 * @return
 	 */
-	public Vertex lerpVertex(Vertex v1, Vertex v2, Vertex v3, double w1,
+	public static Vertex lerpVertex(Vertex v1, Vertex v2, Vertex v3, double w1,
 			double w2, double w3) {
 		double x = w1 * v1.x + w2 * v2.x + w3 * v3.x;
 		double y = w1 * v1.y + w2 * v2.y + w3 * v3.y;
@@ -672,8 +725,8 @@ public class Renderer extends JPanel {
 	 *            Barycentric coordinate
 	 * @return
 	 */
-	public Color lerpColor(Color c1, Color c2, Color c3, double w1, double w2,
-			double w3) {
+	public static Color lerpColor(Color c1, Color c2, Color c3, double w1,
+			double w2, double w3) {
 		double r = c1.getRed() * w1 + c2.getRed() * w2 + c3.getRed() * w3;
 		double g = c1.getGreen() * w1 + c2.getGreen() * w2 + c3.getGreen() * w3;
 		double b = c1.getBlue() * w1 + c2.getBlue() * w2 + c3.getBlue() * w3;
@@ -699,7 +752,7 @@ public class Renderer extends JPanel {
 	 *            even mix, etc.
 	 * @return
 	 */
-	public Color colMix(Color a, Color b, double v) {
+	public static Color colMix(Color a, Color b, double v) {
 		int red = (int) (a.getRed() + v * (b.getRed() - a.getRed()));
 		int green = (int) (a.getGreen() + v * (b.getGreen() - a.getGreen()));
 		int blue = (int) (a.getBlue() + v * (b.getBlue() - a.getBlue()));
@@ -707,13 +760,13 @@ public class Renderer extends JPanel {
 		return new Color(red, green, blue);
 	}
 
-	public Color colAdd(Color a, Color b) {
+	public static Color colAdd(Color a, Color b) {
 		return new Color(Math.min(255, a.getRed() + b.getRed()), Math.min(255, a
 				.getGreen() + b.getGreen()), Math.min(255, a.getBlue()
 				+ b.getBlue()));
 	}
 
-	public Color colMultiply(Color c, double r, double g, double b) {
+	public static Color colMultiply(Color c, double r, double g, double b) {
 		double col_r = c.getRed() / 255.0;
 		double col_g = c.getGreen() / 255.0;
 		double col_b = c.getBlue() / 255.0;
@@ -737,7 +790,7 @@ public class Renderer extends JPanel {
 		f.setSize(800, 800);
 		f.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
-		Renderer p = new Renderer(new File("/Users/raphaelkargon/Documents/Programming/STL Renderer/sphere.stl"));
+		Renderer p = new Renderer();
 		f.getContentPane().add(p);
 		p.setFocusable(true);
 		p.requestFocusInWindow();

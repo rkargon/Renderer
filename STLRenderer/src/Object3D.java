@@ -6,21 +6,23 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.Collections;
 import java.util.HashMap;
 
 import javax.swing.Timer;
 
-public class STLObject {
-	public HashMap<Vertex, MeshVertex> vertices;//maps coordinates to vertices
-	public HashMap<Edge, Edge> edges;
+public class Object3D {
+	public MeshVertex[] vertices;
+	public Edge[] edges;
 	public Face[] faces;
 	public String header;
 
 	public Material mat;
-	
+
 	public boolean smooth;
 
-	public STLObject(File f) throws IOException {
+
+	public Object3D(File f) throws IOException {
 		BufferedInputStream in = new BufferedInputStream(new FileInputStream(f));
 
 		//header, 80 bytes
@@ -34,8 +36,8 @@ public class STLObject {
 		in.read(face_tmp, 0, 4);
 		int nfaces = littleEndianInt(face_tmp, 0);
 		//set up faces and vertices data 
-		vertices = new HashMap<Vertex, MeshVertex>();
-		edges = new HashMap<Edge, Edge>();
+		HashMap<Vertex, MeshVertex> vertices = new HashMap<Vertex, MeshVertex>();
+		HashMap<Edge, Edge> edges = new HashMap<Edge, Edge>();
 		faces = new Face[nfaces]; //set face array initial capacity to nfaces for better performance
 
 		//read each triangle
@@ -82,16 +84,14 @@ public class STLObject {
 			e23 = new Edge(v2, v3);
 			e31 = new Edge(v3, v1);
 
-			if (edges.containsKey(e12)) {
-				e12 = edges.get(e12);
-			}
+			if (edges.containsKey(e12)) e12 = edges.get(e12);
 			else edges.put(e12, e12);
 			if (edges.containsKey(e23)) e23 = edges.get(e23);
 			else edges.put(e23, e23);
 			if (edges.containsKey(e31)) e31 = edges.get(e31);
 			else edges.put(e31, e31);
 
-			faces[i] = new Face(norm, v1, v2, v3);
+			faces[i] = new Face(norm, v1, v2, v3, this);
 			i++;
 
 			//ignore attribute byte count, should be 0
@@ -100,8 +100,50 @@ public class STLObject {
 				+ edges.size() + " edges, and " + vertices.size()
 				+ " vertices.");
 		in.close();
-		
-		smooth=true;
+
+		this.vertices = vertices.values().toArray(new MeshVertex[0]);
+		this.edges = edges.values().toArray(new Edge[0]);
+		smooth = true;
+	}
+
+	public Object3D(Face... facearr) {
+		header = "";
+		smooth = true;
+		this.faces = facearr;
+
+		HashMap<Vertex, MeshVertex> vertices = new HashMap<Vertex, MeshVertex>();
+		HashMap<Edge, Edge> edges = new HashMap<Edge, Edge>();
+
+		MeshVertex v1, v2, v3;
+		Edge e12, e23, e31;
+		for (Face f : this.faces) {
+			f.obj = this;
+
+			v1 = f.vertices[0];
+			v2 = f.vertices[1];
+			v3 = f.vertices[2];
+
+			if (vertices.containsKey(v1)) v1 = vertices.get(v1);
+			else vertices.put(v1, v1);
+			if (vertices.containsKey(v2)) v2 = vertices.get(v2);
+			else vertices.put(v2, v2);
+			if (vertices.containsKey(v3)) v3 = vertices.get(v3);
+			else vertices.put(v3, v3);
+			
+			e12 = new Edge(v1, v2);
+			e23 = new Edge(v2, v3);
+			e31 = new Edge(v3, v1);
+
+			if (edges.containsKey(e12)) e12 = edges.get(e12);
+			else edges.put(e12, e12);
+			if (edges.containsKey(e23)) e23 = edges.get(e23);
+			else edges.put(e23, e23);
+			if (edges.containsKey(e31)) e31 = edges.get(e31);
+			else edges.put(e31, e31);
+		}
+
+		this.vertices = vertices.values().toArray(new MeshVertex[0]);
+		this.edges = edges.values().toArray(new Edge[0]);
 	}
 
 	/* LITTLE ENDIAN IO */
@@ -167,7 +209,7 @@ public class STLObject {
 	public String toString() {
 		String s = "";
 		s += "STL Mesh: { Header=\"" + header + "\", ";
-		s += (faces.length + " faces, " + vertices.size() + " vertices.\n");
+		s += (faces.length + " faces, " + vertices.length + " vertices.\n");
 		for (Face f : faces) {
 			s += (f + "\n");
 		}
@@ -178,7 +220,7 @@ public class STLObject {
 
 	public static void main(String[] args) {
 		try {
-			STLObject monkey = new STLObject(new File("/Users/raphaelkargon/Documents/Programming/STL Renderer/suzanne.stl"));
+			Object3D monkey = new Object3D(new File("/Users/raphaelkargon/Documents/Programming/STL Renderer/suzanne.stl"));
 			monkey.writeSTL(new File("/Users/raphaelkargon/Documents/Programming/STL Renderer/suzanne_out.stl"));
 		}
 		catch (IOException e) {

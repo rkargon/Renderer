@@ -1,6 +1,10 @@
+import java.awt.Color;
+import java.util.List;
+
 public class Face {
 	public Vertex normal;
 	public MeshVertex[] vertices;
+	public Object3D obj;
 
 	/**
 	 * Creates a face based off of three vertices and a normal. If the normal
@@ -14,7 +18,7 @@ public class Face {
 	 * @param v2
 	 * @param v3
 	 */
-	public Face(Vertex normal, MeshVertex v1, MeshVertex v2, MeshVertex v3) {
+	public Face(Vertex normal, MeshVertex v1, MeshVertex v2, MeshVertex v3, Object3D obj) {
 		vertices = new MeshVertex[] { v1, v2, v3 };
 		v1.faces.add(this);
 		v2.faces.add(this);
@@ -25,6 +29,8 @@ public class Face {
 			this.normal = normal;
 		}
 		else this.normal = generateNormal();
+
+		this.obj = obj;
 	}
 
 	/**
@@ -37,8 +43,8 @@ public class Face {
 	 * @param v
 	 *            the array of vertices
 	 */
-	public Face(Vertex normal, MeshVertex[] v) {
-		this(normal, v[0], v[1], v[2]);
+	public Face(Vertex normal, MeshVertex[] v, Object3D obj) {
+		this(normal, v[0], v[1], v[2], obj);
 	}
 
 	public boolean isPerpendicular(Vertex normal) {
@@ -175,13 +181,41 @@ public class Face {
 				+ vertices[1] + ", V3: " + vertices[2] + "]";
 	}
 
+	public static Vertex[] calcBoundingBox(List<Face> faces) {
+		if (faces.size() == 0)
+			throw new IllegalArgumentException("Face list must have at least one face.");
+		double minx, miny, minz, maxx, maxy, maxz, tmp;
+		minx = miny = minz = maxx = maxy = maxz = Double.NaN;
+
+		for (Face f : faces) {
+			tmp = f.minCoord(0);
+			if (minx != minx || minx > tmp) minx = tmp;
+			tmp = f.minCoord(1);
+			if (miny != miny || miny > tmp) miny = tmp;
+			tmp = f.minCoord(2);
+			if (minz != minz || minz > tmp) minz = tmp;
+
+			tmp = f.maxCoord(0);
+			if (maxx != maxx || maxx < tmp) maxx = tmp;
+			tmp = f.maxCoord(1);
+			if (maxy != maxy || maxy < tmp) maxy = tmp;
+			tmp = f.maxCoord(2);
+			if (maxz != maxz || maxz < tmp) maxz = tmp;
+		}
+
+		Vertex min = new Vertex(minx, miny, minz);
+		Vertex max = new Vertex(maxx, maxy, maxz);
+
+		return new Vertex[] { min, max };
+	}
+	
+	public static double surfaceArea(Vertex[] b){
+		double dx = (b[1].x-b[0].x), dy = (b[1].y-b[0].y), dz = (b[1].z-b[0].z);
+		double area = 2*(dx*dy + dx*dz + dy*dz);
+		return area;
+	}
+
 	public static void main(String[] args) {
-		MeshVertex v1 = new MeshVertex(0, 0, 1);
-		MeshVertex v2 = new MeshVertex(0, 1, 0);
-		MeshVertex v3 = new MeshVertex(1, 0, 0);
-		Face f = new Face(null, v2, v1, v3);
-		boolean i = f
-				.intersectRayTriangle(Vertex.ORIGIN(), new Vertex(1, 1, 1), null);
-		System.out.println(i);
+		System.out.println(surfaceArea(new Vertex[]{new Vertex(1, 2, 3), new Vertex(11, 12, 3.1)}));
 	}
 }

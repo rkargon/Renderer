@@ -3,6 +3,7 @@ import java.util.Comparator;
 
 public class Camera {
 	public Vertex center;
+	public Vertex focus;
 	public Vertex normal;
 	public Vertex vert;
 	public double fov;
@@ -13,7 +14,7 @@ public class Camera {
 	private Vertex cx, cy; //horizontal and vertical vectors of image plane
 
 	public Camera() {
-		this(new Vertex(-5, 0, 0), new Vertex(1, 0, 0), new Vertex(0, 0, 1), 1, 0.01, 100, false);
+		this(new Vertex(-5, 0, 0), Vertex.ORIGIN(), new Vertex(1, 0, 0), new Vertex(0, 0, 1), 1, 0.01, 100, false);
 	}
 
 	/**
@@ -31,7 +32,7 @@ public class Camera {
 	 * @param ortho
 	 *            whether view is perspective or orthogonal
 	 */
-	public Camera(Vertex center, Vertex normal, Vertex vert, double fov, double mindist, double maxdist, boolean ortho) {
+	public Camera(Vertex center, Vertex focus, Vertex normal, Vertex vert, double fov, double mindist, double maxdist, boolean ortho) {
 		super();
 
 		if (fov == 0)
@@ -42,6 +43,7 @@ public class Camera {
 			throw new IllegalArgumentException("Normal and vertical vectors of camera must be perpendicular");
 
 		this.center = center;
+		this.focus=focus;
 		this.normal = normal;
 		this.vert = vert;
 		this.fov = fov;
@@ -59,8 +61,16 @@ public class Camera {
 		cy.normalize();
 	}
 
-	public void centerOrigin() {
-		center = normal.scalarproduct(-center.length());
+	public void centerFocus() {
+		center = focus.add(normal.scalarproduct(-focus.subtract(center).length()));
+	}
+	
+	public void zoom(double zoomfactor){
+		center = focus.add(center.subtract(focus).scalarproduct(zoomfactor));
+	}
+	
+	public void shiftFocus(double dx, double dy){
+		focus=focus.add(cx.scalarproduct(dx)).add(cy.scalarproduct(dy));
 	}
 
 	public void rotateAxis(Vertex a, double dtheta) {
@@ -98,7 +108,7 @@ public class Camera {
 				.cos(rho), sp = Math.sin(psi), cp = Math.cos(psi);
 		vert = new Vertex(-sr, cr * sp, cr * cp);
 		normal = new Vertex(ct * cr, ct * sr * sp - cp * st, st * sp + ct * cp * sr);
-		
+		calcImageVectors();
 	}
 	
 	public Point projectVertex(Vertex v, int w, int h) {
@@ -185,6 +195,15 @@ public class Camera {
 		}
 	}
 
+	public Vertex viewVector(Vertex v){
+		if(ortho){
+			return normal.scalarproduct(v.dotproduct(normal));
+		}
+		else{
+			return v.subtract(center);
+		}
+	}
+	
 	public static void main(String[] args) {
 		//TODO figure out project/raycast discrepancy Probably not a big deal
 		//TODO seems like projection code is the one that's messed up. Raycasting is doing it's job, circles are circular

@@ -7,6 +7,12 @@ public class Vertex {
 		this.y = y;
 		this.z = z;
 	}
+	
+	public void setVertex(Vertex v){
+		this.x=v.x;
+		this.y=v.y;
+		this.z=v.z;
+	}
 
 	public double get(int axis){
 		if(axis==0) return x;

@@ -1,125 +1,54 @@
-import java.awt.Graphics2D;
-import java.awt.geom.Line2D;
-import java.awt.geom.Line2D.Double;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
 
 public class KDTree {
+	//TODO implement SAH
 
-	//current axis for this tree
-	public int dir;
-	//position of division along axis
-	public double pos;
+	private static final int MIN_FACES = 4;
+	private static final int MAX_DEPTH = 20;
+	//used for SAH calculations
+	//values derived from code samle from http://www.flipcode.com/archives/Raytracing_Topics_Techniques-Part_7_Kd-Trees_and_More_Speed.shtml
+	private static final double C_TRAVERSAL = 0.3;
+	private static final double C_INTERSECT = 1;
 
-	//subtrees
-	public KDTree lower;
-	public KDTree upper;
-
-	//leaf nodes store faces
-	public List<Face> faces;
-
-	public static final int MAXDEPTH = 10;
-	public static final int MINTRIS = 64;
+	public KDTree lower, upper;
+	public List<Face> faces; //stores faces in leaf nodes
+	public double loc;
+	public int axis;
 
 	public KDTree(List<Face> faces) {
-		this(faces, calcBoundingBox(faces), 0);
+		this(faces, Face.calcBoundingBox(faces), 0);
 	}
 
-	private KDTree(List<Face> faces, Vertex[] bounds, int d) {
-		if (faces.size() <= MINTRIS || d >= MAXDEPTH) {
-			this.faces = faces;
+	public KDTree(List<Face> facelist, Vertex[] bounds, int depth) {
+		if (depth > MAX_DEPTH || facelist.size() < MIN_FACES) {
+			this.faces = facelist;
 			return;
 		}
+		this.axis = depth % 3;
 
-		//sort faces by current axis, get min and max values
-		this.dir = d % 3;
-		CompareFacesByAxis fcomp = new CompareFacesByAxis(dir);
-		Collections.sort(faces, fcomp);
+		//cost of tracing a ray through this node
+		double cost = C_TRAVERSAL + C_INTERSECT * facelist.size()
+				* Face.surfaceArea(bounds);
 
-		//use median of face centers by default. If this is not in the bounding box, just use midpoint of bounding box
-		this.pos = faces.get(faces.size() / 2).center().get(dir);
-		double min = bounds[0].get(dir), max = bounds[1].get(dir);
-		if (pos <= min || pos >= max) {
-			pos = (min + max) / 2;
-		}
-
-		List<Face> lowerfaces = new ArrayList<Face>();
-		List<Face> upperfaces = new ArrayList<Face>();
-		for (Face f : faces) {
-			if (f.inRange(min, pos, dir)) {
-				lowerfaces.add(f);
-			}
-			if (f.inRange(pos, max, dir)) {
-				upperfaces.add(f);
-			}
-
-		}
-
-		Vertex[] bounds_cpy = new Vertex[] { bounds[0].clone(),
-				bounds[1].clone() };
-		bounds[1].set(dir, pos);
-		bounds_cpy[0].set(dir, pos);
-		lower = new KDTree(lowerfaces, bounds, d + 1);
-		upper = new KDTree(upperfaces, bounds_cpy, d + 1);
+		//TODO this.loc=optimalsplitposition();
+		this.loc = splitPosition(facelist, axis);
+		//TODO for each face
+		//TODO if face is in lower region, add to lower array
+		//TODO if face is in upper region, add to upper array
+		//this.lower = new KDTree(lowerfaces, depth+1);
+		//this.upper = new KDTree(upperfaces, depth+1);
 	}
 
-	public String toString() {
-		return toString("", true);
-	}
+	public double splitPosition(List<Face> facelist, int axis) {
+		//optimize
+		double bestpos = Double.NaN;
+		double bestcost = Double.NaN;
 
-	public String toString(String prefix, boolean isTail) {
-		String s = "";
-
-		s += prefix + (isTail ? "\\-- " : "|-- ")
-				+ (faces != null ? "leaf " + faces.size() : "") + "\n";
-
-		if (faces == null) {
-			s += lower.toString(prefix + (isTail ? "    " : "|   "), false);
-			s += upper.toString(prefix + (isTail ? "    " : "|   "), true);
+		for (Face f : facelist){
+			
 		}
-
-		return s;
-	}
-
-	public static Vertex[] calcBoundingBox(List<Face> faces) {
-		double minx, miny, minz, maxx, maxy, maxz;
-		minx = miny = minz = maxx = maxy = maxz = java.lang.Double.NaN;
-
-		double min, max;
-		for (Face f : faces) {
-			min = f.minCoord(0);
-			max = f.minCoord(0);
-			if (minx != minx || minx > min) minx = min;
-			if (maxx != maxx || maxx < max) maxx = max;
-
-			min = f.minCoord(1);
-			max = f.minCoord(1);
-			if (miny != miny || miny > min) miny = min;
-			if (maxy != maxy || maxy < max) maxy = max;
-
-			min = f.minCoord(2);
-			max = f.minCoord(2);
-			if (minz != minz || minz > min) minz = min;
-			if (maxz != maxz || maxz < max) maxz = max;
-		}
-
-		return new Vertex[] { new Vertex(minx, miny, minz),
-				new Vertex(maxx, maxy, maxz) };
-	}
-
-	public class CompareFacesByAxis implements Comparator<Face> {
-		public int axis = 0;
-
-		public CompareFacesByAxis(int axis) {
-			this.axis = axis % 3;//ensure axis is from 0 to 2
-		}
-
-		@Override
-		public int compare(Face f1, Face f2) {
-			return java.lang.Double.compare(f1.center().get(axis), f2.center()
-					.get(axis));
-		}
+		
+		return 0;
 	}
 }
