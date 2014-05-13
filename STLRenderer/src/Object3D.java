@@ -15,7 +15,7 @@ public class Object3D {
 	public MeshVertex[] vertices;
 	public Edge[] edges;
 	public Face[] faces;
-	public String header;
+	public String name;
 
 	public Material mat;
 
@@ -28,7 +28,6 @@ public class Object3D {
 		//header, 80 bytes
 		byte[] headerBytes = new byte[80];
 		in.read(headerBytes);
-		this.header = new String(headerBytes);
 
 		byte[] face_tmp = new byte[50]; //50 bytes, stores one mesh face
 
@@ -101,13 +100,14 @@ public class Object3D {
 				+ " vertices.");
 		in.close();
 
+		this.name=f.getName();
 		this.vertices = vertices.values().toArray(new MeshVertex[0]);
 		this.edges = edges.values().toArray(new Edge[0]);
 		smooth = true;
 	}
 
-	public Object3D(Face... facearr) {
-		header = "";
+	public Object3D(String name, Face... facearr) {
+		this.name=name;
 		smooth = true;
 		this.faces = facearr;
 
@@ -146,6 +146,29 @@ public class Object3D {
 		this.edges = edges.values().toArray(new Edge[0]);
 	}
 
+	public Vertex center(){
+		if(faces.length==0){
+			return Vertex.ORIGIN();
+		}
+		
+		Vertex center=Vertex.ORIGIN();
+		for(Face f : faces){
+			center.add(f.center());
+		}
+		return center.scalarproduct(1.0/faces.length);
+	}
+	
+	public void move(Vertex dv){
+		for(Vertex v : vertices){
+			v.setVertex(v.add(dv));
+		}
+	}
+	
+	public void moveCenterTo(Vertex v){
+		Vertex dv = v.subtract(center());
+		move(dv);
+	}
+	
 	/* LITTLE ENDIAN IO */
 	public int littleEndianInt(byte[] b, int start) {
 		if (start < 0 || start > b.length - 4)
@@ -180,7 +203,7 @@ public class Object3D {
 		BufferedOutputStream out = new BufferedOutputStream(new FileOutputStream(f));
 		byte[] emptyshort = new byte[2];
 
-		out.write(header.getBytes()); //header
+		out.write(new byte[80]); //header is empty
 		out.write(intToLittleEndianBytes(faces.length)); //number of faces
 
 		for (Face face : faces) {
@@ -208,7 +231,7 @@ public class Object3D {
 
 	public String toString() {
 		String s = "";
-		s += "STL Mesh: { Header=\"" + header + "\", ";
+		s += "STL Mesh: { Name=\"" + name + "\", ";
 		s += (faces.length + " faces, " + vertices.length + " vertices.\n");
 		for (Face f : faces) {
 			s += (f + "\n");

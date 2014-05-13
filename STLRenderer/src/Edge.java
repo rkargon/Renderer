@@ -1,8 +1,8 @@
 
 public class Edge {
-	MeshVertex v1, v2;
+	Vertex v1, v2;
 
-	public Edge(MeshVertex v1, MeshVertex v2) {
+	public Edge(Vertex v1, Vertex v2) {
 		this.v1 = v1;
 		this.v2 = v2;
 	}
@@ -13,6 +13,10 @@ public class Edge {
 	
 	public double length(){
 		return v2.subtract(v1).length();
+	}
+	
+	public String toString(){
+		return "Edge: "+v1+", "+v2;
 	}
 	
 	public int hashCode() {

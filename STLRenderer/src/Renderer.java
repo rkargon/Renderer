@@ -1,6 +1,9 @@
+import java.awt.AlphaComposite;
+import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.MouseInfo;
 import java.awt.Point;
 import java.awt.RenderingHints;
 import java.awt.event.ActionEvent;
@@ -20,6 +23,7 @@ import java.util.HashMap;
 import java.util.List;
 
 import javax.swing.JFrame;
+import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.Timer;
 
@@ -29,21 +33,29 @@ import javax.swing.Timer;
  * 
  */
 public class Renderer extends JPanel {
+
+	/* FIELDS */
+
 	ArrayList<Object3D> meshes;
-	Object3D selected = null;
 	ArrayList<Lamp> lamps;
 	Camera cam;
 	World world;
 
+	Object3D selected = null;
 	List<Face> faces;
+	JLabel status;
+
+	boolean isManipulating = false;
+	int manipMode = 0; //0-grab, 1-scale, 2-rotate
+	Point oldmouseloc;
+	Vertex oldcenter;
 
 	//0 - wireframe
 	//1 - painter's algorithm
 	//2 - z-buffering
 	int rendermode = 0;
 	boolean rendering;
-	final int RAY_DEPTH = 4;
-
+	final int RAY_DEPTH = 10;
 	BufferedImage render;
 	Thread renderthread = new Thread() {
 
@@ -59,14 +71,17 @@ public class Renderer extends JPanel {
 			repaint();
 		}
 	});
-
 	private long raysTraced = 0;//used for performance stats
+	
+	List<Edge> kdedges;//delete this, it's a test for kd tree
+
+	/* METHODS */
 
 	public Renderer() {
 		meshes = new ArrayList<Object3D>();
 
 		Object3D mesh;
-		File f = new File("/Users/raphaelkargon/Documents/Programming/STL Renderer/sphere.stl");
+		File f = new File("/Users/raphaelkargon/Documents/Programming/STL Renderer/dalek.stl");
 		try {
 			mesh = new Object3D(f);
 			mesh.mat = new Material(Color.WHITE);
@@ -75,10 +90,8 @@ public class Renderer extends JPanel {
 		catch (IOException e) {
 			e.printStackTrace();
 		}
-		
-		
+
 		/* Compile list of faces. Add meshes before this point */
-		
 		faces = new ArrayList<Face>();
 		for (Object3D meshtmp : meshes) {
 			Collections.addAll(faces, meshtmp.faces);
@@ -90,11 +103,20 @@ public class Renderer extends JPanel {
 		lamps.add(new Lamp(5, new Vertex(3, 0, 0), new Color(100, 100, 255), 2));
 		lamps.add(new Lamp(5, new Vertex(0, 3, 0), Color.WHITE, 2));
 
-		this.setBackground(Color.WHITE);
 		cam = new Camera();
 		world = new World(Color.WHITE, new Color(100, 100, 255));
+		this.setBackground(Color.WHITE);
+		this.setLayout(null);
+		status = new JLabel();
+		status.setLocation(10, 0);
+		status.setSize(300, 30);
+		this.add(status);
+		status.setVisible(true);
 
 		this.addListeners();
+
+		KDTree kdt = new KDTree(faces);
+		kdedges = kdt.wireframe();
 	}
 
 	public void addListeners() {
@@ -105,6 +127,9 @@ public class Renderer extends JPanel {
 
 			@Override
 			public void mousePressed(MouseEvent e) {
+				if (isManipulating) {
+					isManipulating = false;
+				}
 				if (e.getButton() == MouseEvent.BUTTON2) {
 					//if camera is already centered on origin, reset rotation
 					if (cam.focus.lensquared() == 0) {
@@ -114,14 +139,13 @@ public class Renderer extends JPanel {
 						cam.focus = Vertex.ORIGIN();
 					}
 					cam.centerFocus();
-					repaint();
 				}
 				else if (e.getButton() == MouseEvent.BUTTON3) {
 					Vertex[] ray = cam
 							.castRay(e.getX(), e.getY(), getWidth(), getHeight());
 					Face f = rayIntersect(faces, ray[0], ray[1], false, null);
-					if(f==null || f.obj==selected) selected=null;
-					else selected=f.obj;
+					if (f == null || f.obj == selected) selected = null;
+					else selected = f.obj;
 				}
 
 				mousePt = e.getPoint();
@@ -144,6 +168,27 @@ public class Renderer extends JPanel {
 				cam.centerFocus();
 				mousePt = p;
 				repaint();
+			}
+
+			@Override
+			public void mouseMoved(MouseEvent e) {
+				if (isManipulating) {
+					if (oldmouseloc == null) {
+						oldmouseloc = e.getPoint();
+					}
+					Point loc = e.getPoint();
+					double dx = loc.x - oldmouseloc.x;
+					double dy = loc.y - oldmouseloc.y;
+					switch (manipMode) {
+					case 0:
+						selected.move(cam
+								.getImagePlaneVector(dx / 100, -dy / 100));
+						break;
+					}
+
+					oldmouseloc = e.getPoint();
+					repaint();
+				}
 			}
 
 			@Override
@@ -178,16 +223,31 @@ public class Renderer extends JPanel {
 				else if (e.getKeyCode() == KeyEvent.VK_SPACE) {
 					cam.setGlobalRotation(0, 0, 0);
 				}
+				else if (e.getKeyCode() == KeyEvent.VK_G) {
+					if (selected != null && !isManipulating) {
+						isManipulating = true;
+						manipMode = 0;
+						oldcenter = selected.center();
+						oldmouseloc = null;
+					}
+				}
 				else if (e.getKeyCode() == KeyEvent.VK_R) {
 					rendering = !rendering;
 					if (rendering) {
+						status.setVisible(false);
 						t.start();
 						if (!renderthread.isAlive()) renderthread.start();
 					}
+					else {
+						status.setVisible(true);
+					}
 				}
 				else if (e.getKeyCode() == KeyEvent.VK_S) {
-					for (Object3D mesh : meshes)
-						mesh.smooth = !mesh.smooth;
+					if (selected != null) selected.smooth = !selected.smooth;
+					else {
+						for (Object3D mesh : meshes)
+							mesh.smooth = !mesh.smooth;
+					}
 				}
 				else if (e.getKeyCode() == KeyEvent.VK_Z) {
 					if (e.isShiftDown()) {
@@ -285,7 +345,7 @@ public class Renderer extends JPanel {
 	}
 
 	/**
-	 * Calculates the color of a point by casting shadow rays, relfection rays,
+	 * Calculates the color of a point by casting shadow rays, reflection rays,
 	 * and transmission rays.
 	 * 
 	 * @param v
@@ -415,7 +475,7 @@ public class Renderer extends JPanel {
 
 		long start = System.nanoTime();
 
-		//create zbuffer for screen, fill with 1's 
+		//create zbuffer for screen
 		double[][] zbuffer = new double[getHeight()][getWidth()];
 		for (double[] row : zbuffer)
 			Arrays.fill(row, 1);
@@ -448,6 +508,7 @@ public class Renderer extends JPanel {
 		Color v1col, v2col, v3col;
 
 		if (rendermode == 0) {
+			status.setText("Wireframe");
 			g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 			for (Edge e : edges) {
 				v1 = vertexPixels.get(e.v1);
@@ -457,6 +518,7 @@ public class Renderer extends JPanel {
 			}
 		}
 		else if (rendermode == 1) {
+			status.setText("Painter's Algorithm");
 			Collections.reverse(faces);
 			for (Face f : faces) {
 
@@ -474,7 +536,7 @@ public class Renderer extends JPanel {
 			}
 		}
 		else if (rendermode == 2) {
-
+			status.setText("Z-buffer");
 			for (Face f : faces) {
 				//get triangle corners
 				v1 = vertexPixels.get(f.vertices[0]);
@@ -580,14 +642,33 @@ public class Renderer extends JPanel {
 			}
 		}
 
+		//draw kd tree
+		g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+		g2d.setColor(new Color(255, 0, 0, 64));
+		for(Edge e : kdedges){
+			Point kdv1 = cam.projectVertex(e.v1, getWidth(), getHeight());
+			Point kdv2 = cam.projectVertex(e.v2, getWidth(), getHeight());
+			if(kdv1==null || kdv2==null) continue;
+			g2d.drawLine(kdv1.x, kdv1.y, kdv2.x, kdv2.y);
+		}
+		
 		//draw wireframe of selected
-		if (selected!=null) {
+		if (selected != null) {
 			g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-			g2d.setColor(new Color(255, 100, 0));
+			g2d.setColor(new Color(255, 100, 0, 128));
 			for (Edge e : selected.edges) {
 				v1 = vertexPixels.get(e.v1);
 				v2 = vertexPixels.get(e.v2);
 				if (v1 == null || v2 == null) continue;
+
+				if (rendermode == 2) {
+					if (this.getBounds().contains(v1)
+							&& vertexZvalues.get(e.v1) > zbuffer[v1.y][v1.x])
+						continue;
+					if (this.getBounds().contains(v2)
+							&& vertexZvalues.get(e.v2) > zbuffer[v2.y][v2.x])
+						continue;
+				}
 				g2d.drawLine(v1.x, v1.y, v2.x, v2.y);
 			}
 		}
@@ -621,6 +702,24 @@ public class Renderer extends JPanel {
 			g2d.drawLine(lampcenter.x - 11, lampcenter.y + 11, lampcenter.x - 8, lampcenter.y + 8);// /`
 		}
 
+		if (selected != null) {
+			status.setText(selected.name);
+		}
+		if (isManipulating) {
+			String s = "";
+			switch (manipMode) {
+			case 0:
+				s = "Moving";
+				break;
+			case 1:
+				s = "Scaling";
+				break;
+			case 2:
+				s = "Rotating";
+				break;
+			}
+			status.setText(s + " " + selected.name + "...");
+		}
 	}
 
 	public void raytraceRender() {

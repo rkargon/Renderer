@@ -70,7 +70,11 @@ public class Camera {
 	}
 	
 	public void shiftFocus(double dx, double dy){
-		focus=focus.add(cx.scalarproduct(dx)).add(cy.scalarproduct(dy));
+		focus=focus.add(getImagePlaneVector(dx, dy));
+	}
+	
+	public Vertex getImagePlaneVector(double dx, double dy){
+		return cx.scalarproduct(dx).add(cy.scalarproduct(dy));
 	}
 
 	public void rotateAxis(Vertex a, double dtheta) {

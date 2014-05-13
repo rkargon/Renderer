@@ -95,6 +95,11 @@ public class Face {
 		return (fmin <= max && fmax >= min);
 	}
 
+	boolean inBounds(Vertex[] b) {
+		return inRange(b[0].x, b[1].x, 0) && inRange(b[0].y, b[1].y, 1)
+				&& inRange(b[0].z, b[1].z, 2);
+	}
+
 	double minCoord(int axis) {
 		return Math
 				.min(Math.min(vertices[0].get(axis), vertices[1].get(axis)), vertices[2]
@@ -208,14 +213,20 @@ public class Face {
 
 		return new Vertex[] { min, max };
 	}
-	
-	public static double surfaceArea(Vertex[] b){
-		double dx = (b[1].x-b[0].x), dy = (b[1].y-b[0].y), dz = (b[1].z-b[0].z);
-		double area = 2*(dx*dy + dx*dz + dy*dz);
+
+	public static double surfaceArea(Vertex[] b) {
+		return surfaceArea(b[0], b[1]);
+	}
+
+	public static double surfaceArea(Vertex low, Vertex high) {
+		double dx = Math.abs(high.x - low.x), dy = Math.abs(high.y - low.y), dz = Math
+				.abs(high.z - low.z);
+		double area = 2 * (dx * dy + dx * dz + dy * dz);
 		return area;
 	}
 
 	public static void main(String[] args) {
-		System.out.println(surfaceArea(new Vertex[]{new Vertex(1, 2, 3), new Vertex(11, 12, 3.1)}));
+		System.out.println(surfaceArea(new Vertex[] { new Vertex(1, 2, 3),
+				new Vertex(11, 12, 3.1) }));
 	}
 }
