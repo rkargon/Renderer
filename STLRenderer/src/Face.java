@@ -181,14 +181,65 @@ public class Face {
 		return (t > epsilon);
 	}
 
+	/**
+	 * Checks for intersection between a ray and an axis-aligned bounding box
+	 * (AABB)
+	 * 
+	 * @param bounds
+	 *            The bounds of the bounding box
+	 * @param origin
+	 *            The origin of the ray
+	 * @param dir
+	 *            The direction of the ray
+	 * @return Whether the ray intersects the bounding box
+	 */
+	public static boolean rayAABBIntersect(Vertex[] bounds, Vertex origin, Vertex dir) {
+		double tmp;
+		double tmin = (bounds[0].x - origin.x) / dir.x;
+		double tmax = (bounds[1].x - origin.x) / dir.x;
+		if (tmin > tmax) {
+			tmp = tmin;
+			tmin = tmax;
+			tmax = tmp;
+		}
+
+		double tymin = (bounds[0].y - origin.y) / dir.y;
+		double tymax = (bounds[1].y - origin.y) / dir.y;
+		if (tymin > tymax) {
+			tmp = tymin;
+			tymin = tymax;
+			tymax = tmp;
+		}
+
+		if (tmin > tymax || tmax < tymin) return false;
+
+		if (tymin > tmin) tmin = tymin;
+		if (tymax < tmax) tmax = tymax;
+
+		double tzmin = (bounds[0].z - origin.z) / dir.z;
+		double tzmax = (bounds[1].z - origin.z) / dir.z;
+		if (tzmin > tzmax) {
+			tmp = tzmin;
+			tzmin = tzmax;
+			tzmax = tmp;
+		}
+
+		if (tmin > tzmax || tmax < tzmin) return false;
+
+		if (tzmin > tmin) tmin = tzmin;
+		if (tzmax < tmax) tmax = tzmax;
+		
+		if(tmin<=0 && tmax<=0) return false;//ray should not intersect bounding box behind it
+
+		return true;
+	}
+
 	public String toString() {
 		return "Face: [Normal: " + normal + ", V1: " + vertices[0] + ", V2: "
 				+ vertices[1] + ", V3: " + vertices[2] + "]";
 	}
 
 	public static Vertex[] calcBoundingBox(List<Face> faces) {
-		if (faces.size() == 0)
-			throw new IllegalArgumentException("Face list must have at least one face.");
 		double minx, miny, minz, maxx, maxy, maxz, tmp;
 		minx = miny = minz = maxx = maxy = maxz = Double.NaN;
 

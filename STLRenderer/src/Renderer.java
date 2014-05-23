@@ -1,9 +1,6 @@
-import java.awt.AlphaComposite;
-import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
-import java.awt.MouseInfo;
 import java.awt.Point;
 import java.awt.RenderingHints;
 import java.awt.event.ActionEvent;
@@ -72,8 +69,6 @@ public class Renderer extends JPanel {
 		}
 	});
 	private long raysTraced = 0;//used for performance stats
-	
-	List<Edge> kdedges;//delete this, it's a test for kd tree
 
 	/* METHODS */
 
@@ -81,7 +76,7 @@ public class Renderer extends JPanel {
 		meshes = new ArrayList<Object3D>();
 
 		Object3D mesh;
-		File f = new File("/Users/raphaelkargon/Documents/Programming/STL Renderer/dalek.stl");
+		File f = new File("/Users/raphaelkargon/Documents/Programming/STL Renderer/dragon.stl");
 		try {
 			mesh = new Object3D(f);
 			mesh.mat = new Material(Color.WHITE);
@@ -114,9 +109,6 @@ public class Renderer extends JPanel {
 		status.setVisible(true);
 
 		this.addListeners();
-
-		KDTree kdt = new KDTree(faces);
-		kdedges = kdt.wireframe();
 	}
 
 	public void addListeners() {
@@ -358,16 +350,15 @@ public class Renderer extends JPanel {
 	 *            A list of the scene's faces
 	 * @return The color of the point
 	 */
-	public Color traceRay(Vertex origin, Vertex ray, List<Face> faces, int depth) {
-		//TODO add transmission rays
+	public Color traceRay(Vertex origin, Vertex ray, KDTree kdt, int depth) {
 
 		raysTraced++;//For performance stats
 
+		//tuv is used for current vertex, while tuvtmp is used for lamp intersections and whatnot
 		Vertex tuv = new Vertex(0, 0, 0);
-		Face f = rayIntersect(faces, origin, ray, false, tuv);
+		Face f = rayIntersect(kdt, origin, ray, false, tuv);
 		if (f == null) return world.getColor(ray);
 		else {
-			boolean inShadow;
 			Material m = f.obj.mat;
 
 			//calculate vertex location based on tuv
@@ -389,21 +380,16 @@ public class Renderer extends JPanel {
 				n = f.normal;
 			}
 
+			double ndotray = n.dotproduct(ray);
+
 			double r = 0, g = 0, b = 0, spr = 0, spg = 0, spb = 0;
 			for (Lamp l : lamps) {
-				inShadow = false;
 				Vertex lampvect = l.loc.subtract(v);
 
 				//if lamp and view are on different sides of face, skip this lamp.
-				if (n.dotproduct(lampvect) * n.dotproduct(ray) > 0) continue;
+				if (n.dotproduct(lampvect) * ndotray > 0) continue;
 
-				for (Face ftmp : faces) {
-					if (ftmp.intersectRayTriangle(v, lampvect, null)) {
-						inShadow = true;
-						break;
-					}
-				}
-				if (rayIntersect(faces, v, lampvect, true, null) != null)
+				if (rayIntersect(kdt, v, lampvect, true, null) != null)
 					continue;
 
 				Vertex lampvnorm = lampvect.getUnitVector();
@@ -420,10 +406,10 @@ public class Renderer extends JPanel {
 				//n is normalized, so
 				//r = d- 2(d . n)n, where r = reflection, d = lampvector (normalized), n = normal
 				//Phong relfection: spec intensity = (relf*view)^sphardness * intensity
-				Vertex refl = lampvnorm.reflection(n);
+				Vertex lamprefl = lampvnorm.reflection(n);
 				double spec_intensity = l.intensity
 						* m.spintensity
-						* Math.max(0, Math.pow(ray.dotproduct(refl), m.sphardness));
+						* Math.max(0, Math.pow(ray.dotproduct(lamprefl), m.sphardness));
 				double diff_intensity = l.intensity * Math.abs(dotprod)
 						* m.diff_intensity;
 
@@ -451,15 +437,52 @@ public class Renderer extends JPanel {
 
 			}
 
-			Color diffcol = colMultiply(m.diff_col, r, g, b); //diffuse color
+			Color diffcol = colMultiply(m.col(f, tuv.y, tuv.z), r, g, b); //diffuse color
 			Color spcol = colMultiply(m.spcol, spr, spg, spb);//specular color	
 			Color totcol = colAdd(diffcol, spcol);
-			if (depth >= RAY_DEPTH || (m.relf_intensity == 0)) return totcol;
 
-			Vertex refl = ray.reflection(n);
-			Color refcol = traceRay(v, refl, faces, depth + 1);
+			//an approximation. Assumes normals point outside and doesn't really deal with with concentric/intersecting objects.Currently assumes 'outside' of every object is air.
+			//TODO perhaps keep track of ray IOR to better deal with concentric objects. 
+			//TODO trace transparent shadows
+			//TODO fresnel formula
+			if (depth < RAY_DEPTH) {
+				//used both for reflection and refraction (since refraction sometimes reflects)
+				Vertex refl = ray.reflection(n);
 
-			return colMix(totcol, refcol, m.relf_intensity);
+				if (m.alpha < 1) {
+					double n1, n2;
+					Vertex transray = Vertex.ORIGIN();
+
+					if (ndotray < 0) {
+						n1 = 1;
+						n2 = m.ior;
+					}
+					else {
+						n1 = m.ior;
+						n2 = 1;
+					}
+
+					Vertex raynorm = n.scalarproduct(ndotray);
+					Vertex raytang = ray.subtract(raynorm);
+					Vertex transtang = raytang.scalarproduct(n1 / n2);
+					double transsinsquared = transtang.lensquared();
+					if (transsinsquared > 1) transray = refl;
+					else {
+						Vertex transnorm = n.scalarproduct(Math.signum(ndotray)
+								* Math.sqrt(1 - transsinsquared));
+						transray = transnorm.add(transtang);
+					}
+
+					Color transcol = traceRay(v, transray, kdt, depth + 1);
+					totcol = colMix(transcol, totcol, m.alpha);
+				}
+
+				if (m.relf_intensity > 0) {
+					Color refcol = traceRay(v, refl, kdt, depth + 1);
+					totcol = colMix(totcol, refcol, m.relf_intensity);
+				}
+			}
+			return totcol;
 		}
 	}
 
@@ -470,10 +493,14 @@ public class Renderer extends JPanel {
 
 		if (rendering && render != null) {
 			g2d.drawImage(render, null, 0, 0);
+			if (KDTree.completion < 1) {
+				status.setText("Building KD Tree... " + KDTree.completion * 100
+						+ "%");
+				status.setVisible(true);
+			}
+			else status.setVisible(false);
 			return;
 		}
-
-		long start = System.nanoTime();
 
 		//create zbuffer for screen
 		double[][] zbuffer = new double[getHeight()][getWidth()];
@@ -642,16 +669,6 @@ public class Renderer extends JPanel {
 			}
 		}
 
-		//draw kd tree
-		g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-		g2d.setColor(new Color(255, 0, 0, 64));
-		for(Edge e : kdedges){
-			Point kdv1 = cam.projectVertex(e.v1, getWidth(), getHeight());
-			Point kdv2 = cam.projectVertex(e.v2, getWidth(), getHeight());
-			if(kdv1==null || kdv2==null) continue;
-			g2d.drawLine(kdv1.x, kdv1.y, kdv2.x, kdv2.y);
-		}
-		
 		//draw wireframe of selected
 		if (selected != null) {
 			g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -723,18 +740,18 @@ public class Renderer extends JPanel {
 	}
 
 	public void raytraceRender() {
-
-		//TODO make this not gawdawfully slow;
-
 		//set up graphics
 		render = new BufferedImage(getWidth(), getHeight(), BufferedImage.TYPE_3BYTE_BGR);
 		Graphics g = render.getGraphics();
 		g.setColor(Color.WHITE);
 		g.fillRect(0, 0, getWidth(), getHeight());
 
+		KDTree kdt = new KDTree(faces);
+
 		g.setColor(Color.BLACK);
 		Point p = new Point(0, 0);
-		Vertex[] ray;
+		Vertex[] ray1;
+		Color col1;
 		long start = System.nanoTime();
 		for (p.y = 0; p.y < getHeight(); p.y++) {
 			for (p.x = 0; p.x < getWidth(); p.x++) {
@@ -742,8 +759,9 @@ public class Renderer extends JPanel {
 				g.setColor(Color.BLACK);
 				g.drawLine(p.x, p.y, p.x, p.y);
 
-				ray = cam.castRay(p.x, p.y, getWidth(), getHeight());
-				g.setColor(traceRay(ray[0], ray[1], faces, 1));
+				ray1 = cam.castRay(p.x, p.y, getWidth(), getHeight());
+				col1 = traceRay(ray1[0], ray1[1], kdt, 1);
+				g.setColor(col1);
 				g.drawLine(p.x, p.y, p.x, p.y);
 			}
 		}
@@ -753,6 +771,58 @@ public class Renderer extends JPanel {
 				+ " rays in " + time + "ns, or " + raysTraced
 				/ (time / 1_000_000_000.0) + " rays per second.");
 
+	}
+
+	public Face rayIntersect(KDTree kdt, Vertex origin, Vertex ray,
+			boolean lazy, Vertex tuv) {
+		Vertex tuvtmp1 = Vertex.ORIGIN(), tuvtmp2 = Vertex.ORIGIN();
+		if(tuv==null) tuv = Vertex.ORIGIN();
+		Face f1, f2;
+
+		//does ray intersect this bounding box?
+		if (Face.rayAABBIntersect(kdt.bounds, origin, ray)) {
+			//is this a leaf node?
+			if (kdt.faces != null) {
+				f1 = rayIntersect(kdt.faces, origin, ray, lazy, tuvtmp1);
+				tuv.setVertex(tuvtmp1);
+				return f1;
+			}
+			else {
+				f1 = rayIntersect(kdt.lower, origin, ray, lazy, tuvtmp1);
+				if (lazy && f1 != null) {
+					tuv.setVertex(tuvtmp1);
+					return f1;
+				}
+				f2 = rayIntersect(kdt.upper, origin, ray, lazy, tuvtmp2);
+				if (lazy && f2 != null) {
+					tuv.setVertex(tuvtmp2);
+					return f2;
+				}
+
+				//non-lazy compare returned face from each child
+				if (f1 == null) {
+					tuv.setVertex(tuvtmp2);
+					return f2;
+				}
+				else if (f2 == null) {
+					tuv.setVertex(tuvtmp1);
+					return f1;
+				}
+				else {
+					if (tuvtmp1.x < tuvtmp2.x) {
+						tuv.setVertex(tuvtmp1);
+						return f1;
+					}
+					else {
+						tuv.setVertex(tuvtmp2);
+						return f2;
+					}
+				}
+
+			}
+		}
+
+		return null;
 	}
 
 	public Face rayIntersect(List<Face> faces, Vertex origin, Vertex ray,
@@ -807,6 +877,35 @@ public class Renderer extends JPanel {
 	}
 
 	/**
+	 * Smoothly interpolates between two points, so that 1st derivative of curve
+	 * is 0 at endpoints
+	 * 
+	 * @param a
+	 * @param b
+	 * @param t
+	 * @return <code>lerp(a, b, t * t * (3 - 2 * t))</code>
+	 */
+	public static double smoothstep(double a, double b, double t) {
+		double r = t * t * (3 - 2 * t);
+		return a + r * (b - a);
+
+	}
+
+	/**
+	 * Smoothly interpolates between two points, so that 1st and 2nd derivatives
+	 * are 0 at endpoints
+	 * 
+	 * @param a
+	 * @param b
+	 * @param t
+	 * @return
+	 */
+	public static double smootherstep(double a, double b, double t) {
+		double r = t * t * t * (t * (t * 6 - 15) + 10);
+		return a + r * (b - a);
+	}
+
+	/**
 	 * Linearly interpolates colors based on the rgb color space, using
 	 * (normalized) barycentric coordinates
 	 * 
@@ -857,6 +956,20 @@ public class Renderer extends JPanel {
 		int blue = (int) (a.getBlue() + v * (b.getBlue() - a.getBlue()));
 
 		return new Color(red, green, blue);
+	}
+
+	public static Color colBlend(Color... cols) {
+		double red = 0, green = 0, blue = 0;
+		for (Color c : cols) {
+			red += c.getRed();
+			green += c.getGreen();
+			blue += c.getBlue();
+		}
+		red /= cols.length;
+		green /= cols.length;
+		blue /= cols.length;
+
+		return new Color((int) red, (int) green, (int) blue);
 	}
 
 	public static Color colAdd(Color a, Color b) {

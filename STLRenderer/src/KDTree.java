@@ -17,16 +17,20 @@ public class KDTree {
 	public int axis;
 	public Vertex[] bounds;
 
+	public static double completion=0;
+	
 	public KDTree(List<Face> faces) {
 		this(faces, Face.calcBoundingBox(faces), 0);
 	}
 
 	private KDTree(List<Face> facelist, Vertex[] bounds, int depth) {
+		if(depth==0) completion=0;
 		this.axis = depth % 3;
 		this.bounds = bounds;
 
 		if (depth > MAX_DEPTH || facelist.size() < MIN_FACES) {
 			this.faces = facelist;
+			completion+= 1.0/(1<<depth);
 			return;
 		}
 
@@ -38,6 +42,7 @@ public class KDTree {
 		double[] poscost = splitPosition(facelist, axis);
 		if (poscost[1] > cost) {
 			this.faces = facelist;
+			completion += 1.0/(1<<depth);
 			return;
 		}
 		this.loc = poscost[0];
@@ -69,28 +74,6 @@ public class KDTree {
 		double min = bounds[0].get(axis), max = bounds[1].get(axis);
 
 		double costtmp;
-		//		for (Face f : facelist) {
-		//			postmp = f.minCoord(axis);
-		//			//check that position is in bounds
-		//			if (postmp > bounds[0].get(axis) && postmp < bounds[1].get(axis)) {
-		//				//get cost of this split
-		//				costtmp = splitCost(facelist, postmp, axis);
-		//				//check if cost is best so far
-		//				if (costtmp < bestcost || bestcost != bestcost) {
-		//					bestcost = costtmp;
-		//					bestpos = postmp;
-		//				}
-		//			}
-		//
-		//			postmp = f.maxCoord(axis);
-		//			if (postmp > bounds[0].get(axis) && postmp < bounds[1].get(axis)) {
-		//				costtmp = splitCost(facelist, postmp, axis);
-		//				if (costtmp < bestcost || bestcost != bestcost) {
-		//					bestcost = costtmp;
-		//					bestpos = postmp;
-		//				}
-		//			}
-		//		}
 
 		//just check 8 possible locations, much faster than checking face boundaries
 		for (double i = min; i < max; i += (max - min) / 8) {

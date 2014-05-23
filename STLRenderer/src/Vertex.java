@@ -54,7 +54,7 @@ public class Vertex {
 	}
 
 	public double length() {
-		return Math.sqrt(lensquared());
+		return Math.sqrt(x * x + y * y + z * z);
 	}
 
 	/**
