@@ -53,7 +53,9 @@ public class Renderer extends JPanel {
 	int rendermode = 0;
 	boolean rendering;
 	final int RAY_DEPTH = 10;
+	final int TILESIZE = 32;
 	BufferedImage render;
+	KDTree renderkdt;
 	Thread renderthread = new Thread() {
 
 		public void run() {
@@ -76,6 +78,7 @@ public class Renderer extends JPanel {
 		meshes = new ArrayList<Object3D>();
 
 		Object3D mesh;
+
 		File f = new File("/Users/raphaelkargon/Documents/Programming/STL Renderer/dragon.stl");
 		try {
 			mesh = new Object3D(f);
@@ -93,10 +96,12 @@ public class Renderer extends JPanel {
 		}
 
 		lamps = new ArrayList<Lamp>();
-		lamps.add(new Lamp(5, new Vertex(0, -3, 0), new Color(255, 100, 100), 2));
-		lamps.add(new Lamp(5, new Vertex(0, 0, 3), new Color(100, 255, 100), 2));
-		lamps.add(new Lamp(5, new Vertex(3, 0, 0), new Color(100, 100, 255), 2));
-		lamps.add(new Lamp(5, new Vertex(0, 3, 0), Color.WHITE, 2));
+		lamps.add(new Lamp(12, new Vertex(-3, -3, 0), new Color((int) ((Math
+				.random() - 0.5) * Integer.MAX_VALUE)), 2));
+		lamps.add(new Lamp(12, new Vertex(3, -3, 0), new Color((int) ((Math
+				.random() - 0.5) * Integer.MAX_VALUE)), 2));
+		lamps.add(new Lamp(12, new Vertex(0, 4.2, 0), new Color((int) ((Math
+				.random() - 0.5) * Integer.MAX_VALUE)), 2));
 
 		cam = new Camera();
 		world = new World(Color.WHITE, new Color(100, 100, 255));
@@ -362,9 +367,7 @@ public class Renderer extends JPanel {
 			Material m = f.obj.mat;
 
 			//calculate vertex location based on tuv
-			Vertex v = f.vertices[0].scalarproduct(1 - tuv.y - tuv.z)
-					.add(f.vertices[1].scalarproduct(tuv.y))
-					.add(f.vertices[2].scalarproduct(tuv.z));
+			Vertex v = origin.add(ray.scalarproduct(tuv.x));
 			//calculate normal
 			Vertex n;
 			if (f.obj.smooth) {
@@ -442,9 +445,7 @@ public class Renderer extends JPanel {
 			Color totcol = colAdd(diffcol, spcol);
 
 			//an approximation. Assumes normals point outside and doesn't really deal with with concentric/intersecting objects.Currently assumes 'outside' of every object is air.
-			//TODO perhaps keep track of ray IOR to better deal with concentric objects. 
-			//TODO trace transparent shadows
-			//TODO fresnel formula
+			//also doesn't do fresnel formula, reflection and refraction are handled separately, except for total internal reflection
 			if (depth < RAY_DEPTH) {
 				//used both for reflection and refraction (since refraction sometimes reflects)
 				Vertex refl = ray.reflection(n);
@@ -746,23 +747,12 @@ public class Renderer extends JPanel {
 		g.setColor(Color.WHITE);
 		g.fillRect(0, 0, getWidth(), getHeight());
 
-		KDTree kdt = new KDTree(faces);
-
-		g.setColor(Color.BLACK);
-		Point p = new Point(0, 0);
-		Vertex[] ray1;
-		Color col1;
+		renderkdt = new KDTree(faces);
 		long start = System.nanoTime();
-		for (p.y = 0; p.y < getHeight(); p.y++) {
-			for (p.x = 0; p.x < getWidth(); p.x++) {
-				//to show status
-				g.setColor(Color.BLACK);
-				g.drawLine(p.x, p.y, p.x, p.y);
-
-				ray1 = cam.castRay(p.x, p.y, getWidth(), getHeight());
-				col1 = traceRay(ray1[0], ray1[1], kdt, 1);
-				g.setColor(col1);
-				g.drawLine(p.x, p.y, p.x, p.y);
+		for (int y = 0; y < getHeight(); y += TILESIZE) {
+			for (int x = 0; x < getWidth(); x += TILESIZE) {
+				raytraceTile(x, Math.min(getWidth() - 1, x + TILESIZE - 1), y, Math
+						.min(getHeight() - 1, y + TILESIZE - 1), g);
 			}
 		}
 		long stop = System.nanoTime();
@@ -773,10 +763,26 @@ public class Renderer extends JPanel {
 
 	}
 
+	public void raytraceTile(int xmin, int xmax, int ymin, int ymax, Graphics g) {
+		int i, j;
+		Vertex[] ray;
+		Color col;
+		for (i = ymin; i <= ymax; i++) {
+			for (j = xmin; j <= xmax; j++) {
+				g.setColor(Color.BLACK);
+				g.drawLine(j, i, j, i); //to show status
+				ray = cam.castRay(j, i, getWidth(), getHeight());
+				col = traceRay(ray[0], ray[1], renderkdt, 1);
+				g.setColor(col);
+				g.drawLine(j, i, j, i);
+			}
+		}
+	}
+
 	public Face rayIntersect(KDTree kdt, Vertex origin, Vertex ray,
 			boolean lazy, Vertex tuv) {
 		Vertex tuvtmp1 = Vertex.ORIGIN(), tuvtmp2 = Vertex.ORIGIN();
-		if(tuv==null) tuv = Vertex.ORIGIN();
+		if (tuv == null) tuv = Vertex.ORIGIN();
 		Face f1, f2;
 
 		//does ray intersect this bounding box?
@@ -861,19 +867,8 @@ public class Renderer extends JPanel {
 		return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
 	}
 
-	/**
-	 * Interpolates three vector values using the given barycentric coordinates.
-	 * This can be used to interpolate the coordinates of a point on a face, or
-	 * to interpolate normals
-	 * 
-	 * @return
-	 */
-	public static Vertex lerpVertex(Vertex v1, Vertex v2, Vertex v3, double w1,
-			double w2, double w3) {
-		double x = w1 * v1.x + w2 * v2.x + w3 * v3.x;
-		double y = w1 * v1.y + w2 * v2.y + w3 * v3.y;
-		double z = w1 * v1.z + w2 * v2.z + w3 * v3.z;
-		return new Vertex(x, y, z);
+	public static double lerp(double a, double b, double t){
+		return a + (b-a)*t;
 	}
 
 	/**
@@ -987,7 +982,7 @@ public class Renderer extends JPanel {
 		double out_g = Math.min(1, g * col_g); //multiply, clamp
 		double out_b = Math.min(1, b * col_b); //multiply, clamp
 
-		return new Color((int) (out_r * 255), (int) (out_g * 255), (int) (out_b * 255));
+		return new Color((float) out_r, (float) out_g, (float) out_b);
 	}
 
 	class RenderThread extends Thread {

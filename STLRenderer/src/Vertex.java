@@ -1,3 +1,5 @@
+import java.util.List;
+
 public class Vertex {
 	public double x, y, z;
 
@@ -25,7 +27,7 @@ public class Vertex {
 		if (axis == 0) x = val;
 		else if (axis == 1) y = val;
 		else if (axis == 2) z = val;
-		else set(Math.abs(axis)%3, val);
+		else set(Math.abs(axis) % 3, val);
 	}
 
 	public Vertex subtract(Vertex v) {
@@ -144,5 +146,42 @@ public class Vertex {
 
 		return m;
 	}
+
+	/**
+	 * Interpolates three vector values using the given barycentric coordinates.
+	 * This can be used to interpolate the coordinates of a point on a face, or
+	 * to interpolate normals
+	 * 
+	 * @return
+	 */
+	public static Vertex lerp(Vertex v1, Vertex v2, Vertex v3, double w1,
+			double w2, double w3) {
+		double x = w1 * v1.x + w2 * v2.x + w3 * v3.x;
+		double y = w1 * v1.y + w2 * v2.y + w3 * v3.y;
+		double z = w1 * v1.z + w2 * v2.z + w3 * v3.z;
+		return new Vertex(x, y, z);
+	}
+
+	public static Vertex lerp(Vertex v1, Vertex v2, double r) {
+		//v1 + (v2-v1)*r
+		return new Vertex(v1.x + (v2.x - v1.x) * r, v1.y + (v2.y - v1.y) * r, v1.z
+				+ (v2.z - v1.z) * r);
+	}
+
+	//	public static Vertex[] listBounds(List<Vertex> vertices) {
+	//		double minx, miny, minz, maxx, maxy, maxz;
+	//		minx = miny = minz = Double.POSITIVE_INFINITY;
+	//		maxx = maxy = maxz = Double.NEGATIVE_INFINITY;
+	//		for (Vertex v : vertices) {
+	//			if (v.x < minx) minx = v.x;
+	//			if (v.x > maxx) maxx = v.x;
+	//			if (v.y < miny) miny = v.y;
+	//			if (v.y > maxy) maxy = v.y;
+	//			if (v.z < minz) minz = v.z;
+	//			if (v.z > maxz) maxz = v.z;
+	//		}
+	//		return new Vertex[] { new Vertex(minx, miny, minz),
+	//				new Vertex(maxx, maxy, maxz) };
+	//	}
 
 }

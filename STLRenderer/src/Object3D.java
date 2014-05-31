@@ -19,7 +19,7 @@ public class Object3D {
 
 	public Material mat;
 
-	public boolean smooth;
+	public boolean smooth=false;
 
 
 	public Object3D(File f) throws IOException {
@@ -103,12 +103,10 @@ public class Object3D {
 		this.name=f.getName();
 		this.vertices = vertices.values().toArray(new MeshVertex[0]);
 		this.edges = edges.values().toArray(new Edge[0]);
-		smooth = true;
 	}
 
 	public Object3D(String name, Face... facearr) {
 		this.name=name;
-		smooth = true;
 		this.faces = facearr;
 
 		HashMap<Vertex, MeshVertex> vertices = new HashMap<Vertex, MeshVertex>();

@@ -181,6 +181,16 @@ public class Face {
 		return (t > epsilon);
 	}
 
+	public Vertex[] bounds(){
+		double xmin = minCoord(0);
+		double xmax = maxCoord(0);
+		double ymin = minCoord(1);
+		double ymax = maxCoord(1);
+		double zmin = minCoord(2);
+		double zmax = maxCoord(2);
+		return new Vertex[]{new Vertex(xmin, ymin, zmin), new Vertex(xmax, ymax, zmax)};
+	}
+	
 	/**
 	 * Checks for intersection between a ray and an axis-aligned bounding box
 	 * (AABB)

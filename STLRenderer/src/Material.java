@@ -11,9 +11,9 @@ public class Material {
 	public double spintensity = 1;
 	public double sphardness = 128;
 
-	public double relf_intensity = 0;
+	public double relf_intensity = 0.2;
 	public double alpha = 1;
-	public double ior = 1.0;
+	public double ior = 1;
 
 	public Material(Color col) {
 		this.diff_col = col;
