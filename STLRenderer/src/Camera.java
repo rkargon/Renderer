@@ -14,7 +14,7 @@ public class Camera {
 	private Vertex cx, cy; //horizontal and vertical vectors of image plane
 
 	public Camera() {
-		this(new Vertex(-5, 0, 0), Vertex.ORIGIN(), new Vertex(1, 0, 0), new Vertex(0, 0, 1), 0.75, 0.01, 100, false);
+		this(new Vertex(-5, 0, 0), Vertex.ORIGIN(), new Vertex(1, 0, 0), new Vertex(0, 0, 1), 0.75, 0.01, 1000, false);
 	}
 
 	/**

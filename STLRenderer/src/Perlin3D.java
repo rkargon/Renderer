@@ -137,17 +137,17 @@ public class Perlin3D implements Texture {
 		double dotp_set = grad_set.dotproduct(diff_set);
 
 		// interpolate along y axis to get four values
-		double inter_y_wb = Renderer.smootherstep(dotp_nwb, dotp_swb, sy);
-		double inter_y_eb = Renderer.smootherstep(dotp_neb, dotp_seb, sy);
-		double inter_y_wt = Renderer.smootherstep(dotp_nwt, dotp_swt, sy);
-		double inter_y_et = Renderer.smootherstep(dotp_net, dotp_set, sy);
+		double inter_y_wb = MathUtils.smootherstep(dotp_nwb, dotp_swb, sy);
+		double inter_y_eb = MathUtils.smootherstep(dotp_neb, dotp_seb, sy);
+		double inter_y_wt = MathUtils.smootherstep(dotp_nwt, dotp_swt, sy);
+		double inter_y_et = MathUtils.smootherstep(dotp_net, dotp_set, sy);
 
 		// interpolate along x axis to get two values
-		double inter_x_b = Renderer.smootherstep(inter_y_wb, inter_y_eb, sx);
-		double inter_x_t = Renderer.smootherstep(inter_y_wt, inter_y_et, sx);
+		double inter_x_b = MathUtils.smootherstep(inter_y_wb, inter_y_eb, sx);
+		double inter_x_t = MathUtils.smootherstep(inter_y_wt, inter_y_et, sx);
 
 		// interpolate along z axis to get one, final value
-		double inter_z = Renderer.smootherstep(inter_x_b, inter_x_t, sz);
+		double inter_z = MathUtils.smootherstep(inter_x_b, inter_x_t, sz);
 
 		return inter_z;
 	}

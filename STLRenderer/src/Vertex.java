@@ -168,20 +168,50 @@ public class Vertex {
 				+ (v2.z - v1.z) * r);
 	}
 
-	//	public static Vertex[] listBounds(List<Vertex> vertices) {
-	//		double minx, miny, minz, maxx, maxy, maxz;
-	//		minx = miny = minz = Double.POSITIVE_INFINITY;
-	//		maxx = maxy = maxz = Double.NEGATIVE_INFINITY;
-	//		for (Vertex v : vertices) {
-	//			if (v.x < minx) minx = v.x;
-	//			if (v.x > maxx) maxx = v.x;
-	//			if (v.y < miny) miny = v.y;
-	//			if (v.y > maxy) maxy = v.y;
-	//			if (v.z < minz) minz = v.z;
-	//			if (v.z > maxz) maxz = v.z;
-	//		}
-	//		return new Vertex[] { new Vertex(minx, miny, minz),
-	//				new Vertex(maxx, maxy, maxz) };
-	//	}
+	public static Vertex[] listBounds(List<Vertex> vertices) {
+		double minx, miny, minz, maxx, maxy, maxz;
+		minx = miny = minz = Double.POSITIVE_INFINITY;
+		maxx = maxy = maxz = Double.NEGATIVE_INFINITY;
+		for (Vertex v : vertices) {
+			if (v.x < minx) minx = v.x;
+			if (v.x > maxx) maxx = v.x;
+			if (v.y < miny) miny = v.y;
+			if (v.y > maxy) maxy = v.y;
+			if (v.z < minz) minz = v.z;
+			if (v.z > maxz) maxz = v.z;
+		}
+		return new Vertex[] { new Vertex(minx, miny, minz),
+				new Vertex(maxx, maxy, maxz) };
+	}
 
+	public static Vertex[] listBounds(Vertex... vertices) {
+		double minx, miny, minz, maxx, maxy, maxz;
+		minx = miny = minz = Double.POSITIVE_INFINITY;
+		maxx = maxy = maxz = Double.NEGATIVE_INFINITY;
+		for (Vertex v : vertices) {
+			if (v.x < minx) minx = v.x;
+			if (v.x > maxx) maxx = v.x;
+			if (v.y < miny) miny = v.y;
+			if (v.y > maxy) maxy = v.y;
+			if (v.z < minz) minz = v.z;
+			if (v.z > maxz) maxz = v.z;
+		}
+		return new Vertex[] { new Vertex(minx, miny, minz),
+				new Vertex(maxx, maxy, maxz) };
+	}
+
+	public static Vertex[] intersectBoundingBoxes(Vertex[] b1, Vertex[] b2){
+		Vertex[] newbounds = new Vertex[]{new Vertex(0,0,0), new Vertex(0,0,0)};
+		newbounds[0] = max3(b1[0], b2[0]);
+		newbounds[1] = min3(b1[1], b2[1]);
+		return newbounds;
+	}
+
+	public static Vertex max3(Vertex v1, Vertex v2) {
+		return new Vertex(Math.max(v1.x, v2.x), Math.max(v1.y, v2.y), Math.max(v1.z, v2.z));
+	}
+
+	public static Vertex min3(Vertex v1, Vertex v2) {
+		return new Vertex(Math.min(v1.x, v2.x), Math.min(v1.y, v2.y), Math.min(v1.z, v2.z));
+	}
 }

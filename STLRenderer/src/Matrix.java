@@ -1,6 +1,15 @@
 import java.awt.Dimension;
 import java.util.Arrays;
 
+/**
+ * Matrix class. Mainly used for multiplying matrices while rotating Cameras.
+ * This was copied from a larger, more complete Matrix library, so there lots of
+ * extra utiltity functions that may not be used at the moment, but will
+ * probably come in handy in the future.
+ * 
+ * @author raphaelkargon
+ * 
+ */
 public class Matrix {
 	public static double DEFAULT_EPSILON = 1E-14;
 
@@ -33,20 +42,22 @@ public class Matrix {
 	}
 
 	/**
-	 * Copies a matrix to a new size, either adding 0's or discarding data that does not fit
+	 * Copies a matrix to a new size, either adding 0's or discarding data that
+	 * does not fit
+	 * 
 	 * @param A
 	 * @param m
 	 * @param n
 	 */
-	public Matrix(Matrix A, int m, int n){
+	public Matrix(Matrix A, int m, int n) {
 		this(m, n);
-		
-		for(int i=0; i<m; i++){
-			if(i>=A.m) return;
-			System.arraycopy(A.data, i*A.n, data, i*n, Math.min(A.n, n));
+
+		for (int i = 0; i < m; i++) {
+			if (i >= A.m) return;
+			System.arraycopy(A.data, i * A.n, data, i * n, Math.min(A.n, n));
 		}
 	}
-	
+
 	/**
 	 * 
 	 * @return a COPY of the data of the matrix
@@ -95,23 +106,29 @@ public class Matrix {
 			throw new IllegalArgumentException("Indices are out of bounds.");
 		this.data[i * n + j] = x;
 	}
-	
+
 	/**
-	 * No boundary checks, directly accesses data array. get(i,j) ~ fastget(i*n+j)
-	 * @param i The index of the data array
+	 * No boundary checks, directly accesses data array. get(i,j) ~
+	 * fastget(i*n+j)
+	 * 
+	 * @param i
+	 *            The index of the data array
 	 * @return The value at that index
 	 */
-	public double fastget(int i){
+	public double fastget(int i) {
 		return data[i];
 	}
-	
+
 	/**
-	 * No boundary checks, directly modifies data array. set(i,j, x) ~ fastet(i*n+j, x)
-	 * @param i The index of the data array
+	 * No boundary checks, directly modifies data array. set(i,j, x) ~
+	 * fastet(i*n+j, x)
+	 * 
+	 * @param i
+	 *            The index of the data array
 	 * @return The value at that index
 	 */
-	public void fastset(int i, double x){
-		data[i]=x;
+	public void fastset(int i, double x) {
+		data[i] = x;
 	}
 
 	public Matrix getRow(int i) {
@@ -233,7 +250,6 @@ public class Matrix {
 		return tr;
 	}
 
-
 	/**
 	 * Matrix multiplication.
 	 * Does this naively, O(n^3) for nxn square matrices
@@ -246,7 +262,8 @@ public class Matrix {
 		if (n != B.m)
 			throw new IllegalArgumentException("Matrix has noncompatible number of rows. This=("
 					+ m + ", " + n + "), B=(" + B.m + ", " + B.n + ")");
-		if(m==1 && n==1 && B.n==1) return new Matrix(new double[]{data[0]*B.data[0]}, 1, 1);
+		if (m == 1 && n == 1 && B.n == 1)
+			return new Matrix(new double[] { data[0] * B.data[0] }, 1, 1);
 		if (m == 2 && n == 2 && B.n == 2) return product_2x2(B);
 		int p = B.n, n = B.m; //avoid confusion with m's and n's.
 		Matrix prod = new Matrix(m, p);

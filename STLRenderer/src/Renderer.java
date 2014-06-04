@@ -1,3 +1,4 @@
+import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
@@ -79,7 +80,7 @@ public class Renderer extends JPanel {
 
 		Object3D mesh;
 
-		File f = new File("/Users/raphaelkargon/Documents/Programming/STL Renderer/dragon.stl");
+		File f = new File("/Users/raphaelkargon/Documents/Programming/STL Renderer/thaibig.stl");
 		try {
 			mesh = new Object3D(f);
 			mesh.mat = new Material(Color.WHITE);
@@ -114,6 +115,8 @@ public class Renderer extends JPanel {
 		status.setVisible(true);
 
 		this.addListeners();
+
+		//renderkdt = KDTree.buildTree(faces);
 	}
 
 	public void addListeners() {
@@ -408,7 +411,7 @@ public class Renderer extends JPanel {
 
 				//n is normalized, so
 				//r = d- 2(d . n)n, where r = reflection, d = lampvector (normalized), n = normal
-				//Phong relfection: spec intensity = (relf*view)^sphardness * intensity
+				//Phong reflection: spec intensity = (relf*view)^sphardness * intensity
 				Vertex lamprefl = lampvnorm.reflection(n);
 				double spec_intensity = l.intensity
 						* m.spintensity
@@ -535,9 +538,43 @@ public class Renderer extends JPanel {
 		double z1, z2, z3;
 		Color v1col, v2col, v3col;
 
+		//draw wireframe of selected
+		if (selected != null) {
+			g2d.setStroke(new BasicStroke(4));
+			g2d.setColor(new Color(255, 100, 0));
+			for (Edge e : selected.edges) {
+				v1 = vertexPixels.get(e.v1);
+				v2 = vertexPixels.get(e.v2);
+				if (v1 == null || v2 == null) continue;
+
+				if (rendermode == 2) {
+					if (this.getBounds().contains(v1)
+							&& vertexZvalues.get(e.v1) > zbuffer[v1.y][v1.x])
+						continue;
+					if (this.getBounds().contains(v2)
+							&& vertexZvalues.get(e.v2) > zbuffer[v2.y][v2.x])
+						continue;
+				}
+				g2d.drawLine(v1.x, v1.y, v2.x, v2.y);
+			}
+		}
+
+		g2d.setStroke(new BasicStroke(1));
 		if (rendermode == 0) {
 			status.setText("Wireframe");
-			g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+			g2d.setColor(Color.BLACK);
+
+			//			edges = KDTree.testTriangleClipping((int)cam.center.length());
+			//			for (int i = 0; i < edges.size(); i++) {
+			//				if (i > 11) g2d.setColor(Color.RED);
+			//				if (i > 23) g2d.setColor(Color.blue);
+			//				Edge e = edges.get(i);
+			//				v1 = cam.projectVertex(e.v1, getWidth(), getHeight());
+			//				v2 = cam.projectVertex(e.v2, getWidth(), getHeight());
+			//				if (v1 == null || v2 == null) continue;
+			//				g2d.drawLine(v1.x, v1.y, v2.x, v2.y);
+			//			}
+
 			for (Edge e : edges) {
 				v1 = vertexPixels.get(e.v1);
 				v2 = vertexPixels.get(e.v2);
@@ -608,11 +645,11 @@ public class Renderer extends JPanel {
 
 				//initial barycentric coordinates at corner
 				Point p = new Point(minX, minY);
-				int w1_row = orient2D(v2, v3, p);
-				int w2_row = orient2D(v3, v1, p);
-				int w3_row = orient2D(v1, v2, p);
+				int w1_row = MathUtils.orient2D(v2, v3, p);
+				int w2_row = MathUtils.orient2D(v3, v1, p);
+				int w3_row = MathUtils.orient2D(v1, v2, p);
 
-				int w = orient2D(v1, v2, v3);
+				int w = MathUtils.orient2D(v1, v2, v3);
 				if (w == 0) continue;
 				int wsgn = Integer.signum(w);
 
@@ -627,30 +664,22 @@ public class Renderer extends JPanel {
 					int w3 = w3_row;
 
 					for (p.x = minX; p.x <= maxX; p.x++) {
-
 						//if w123 have the same sign as w, or are 0, then point is inside triangle
 						if ((Integer.signum(w1) == wsgn || w1 == 0)
 								&& (Integer.signum(w2) == wsgn || w2 == 0)
 								&& (Integer.signum(w3) == wsgn || w3 == 0)) {
-
 							//interpolate z value
 							z = z1 + w2 * dz21 / w + w3 * dz31 / w;
-
 							if (z < zbuffer[p.y][p.x]) {
 								zbuffer[p.y][p.x] = z;
 
 								//only calculate face color once, unless smooth shading is enabled
-								if (f.obj.smooth) {
-									col = lerpColor(v1col, v2col, v3col, (double) w1
-											/ w, (double) w2 / w, (double) w3
-											/ w);
-								}
+								if (f.obj.smooth) col = lerpColor(v1col, v2col, v3col, (double) w1
+										/ w, (double) w2 / w, (double) w3 / w);
 								else {
-									if (col == null) {
+									if (col == null)
 										col = calcPointLighting(fcenter, f.normal, f.obj.mat);
-									}
 								}
-
 								g2d.setColor(col);
 								g2d.drawLine(p.x, p.y, p.x, p.y);
 							}
@@ -667,27 +696,6 @@ public class Renderer extends JPanel {
 					w2_row += B31;
 					w3_row += B12;
 				}
-			}
-		}
-
-		//draw wireframe of selected
-		if (selected != null) {
-			g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-			g2d.setColor(new Color(255, 100, 0, 128));
-			for (Edge e : selected.edges) {
-				v1 = vertexPixels.get(e.v1);
-				v2 = vertexPixels.get(e.v2);
-				if (v1 == null || v2 == null) continue;
-
-				if (rendermode == 2) {
-					if (this.getBounds().contains(v1)
-							&& vertexZvalues.get(e.v1) > zbuffer[v1.y][v1.x])
-						continue;
-					if (this.getBounds().contains(v2)
-							&& vertexZvalues.get(e.v2) > zbuffer[v2.y][v2.x])
-						continue;
-				}
-				g2d.drawLine(v1.x, v1.y, v2.x, v2.y);
 			}
 		}
 
@@ -747,7 +755,7 @@ public class Renderer extends JPanel {
 		g.setColor(Color.WHITE);
 		g.fillRect(0, 0, getWidth(), getHeight());
 
-		renderkdt = new KDTree(faces);
+		renderkdt = KDTree.buildTree(faces);
 		long start = System.nanoTime();
 		for (int y = 0; y < getHeight(); y += TILESIZE) {
 			for (int x = 0; x < getWidth(); x += TILESIZE) {
@@ -851,54 +859,6 @@ public class Renderer extends JPanel {
 		return f;
 	}
 
-	/**
-	 * Basically cross product, gives twice signed area of triangle abc
-	 * Can also determine if a point p is inside a triangle abc
-	 * 
-	 * @param a
-	 *            Point A
-	 * @param b
-	 *            Point B
-	 * @param c
-	 *            Point C
-	 * @return (B-A) X (C-A)
-	 */
-	public static int orient2D(Point a, Point b, Point c) {
-		return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
-	}
-
-	public static double lerp(double a, double b, double t){
-		return a + (b-a)*t;
-	}
-
-	/**
-	 * Smoothly interpolates between two points, so that 1st derivative of curve
-	 * is 0 at endpoints
-	 * 
-	 * @param a
-	 * @param b
-	 * @param t
-	 * @return <code>lerp(a, b, t * t * (3 - 2 * t))</code>
-	 */
-	public static double smoothstep(double a, double b, double t) {
-		double r = t * t * (3 - 2 * t);
-		return a + r * (b - a);
-
-	}
-
-	/**
-	 * Smoothly interpolates between two points, so that 1st and 2nd derivatives
-	 * are 0 at endpoints
-	 * 
-	 * @param a
-	 * @param b
-	 * @param t
-	 * @return
-	 */
-	public static double smootherstep(double a, double b, double t) {
-		double r = t * t * t * (t * (t * 6 - 15) + 10);
-		return a + r * (b - a);
-	}
 
 	/**
 	 * Linearly interpolates colors based on the rgb color space, using
@@ -924,14 +884,7 @@ public class Renderer extends JPanel {
 		double g = c1.getGreen() * w1 + c2.getGreen() * w2 + c3.getGreen() * w3;
 		double b = c1.getBlue() * w1 + c2.getBlue() * w2 + c3.getBlue() * w3;
 
-		if (r < 0) r = 0;
-		else if (r > 255) r = 255;
-		if (g < 0) g = 0;
-		else if (g > 255) g = 255;
-		if (b < 0) b = 0;
-		else if (b > 255) b = 255;
-
-		Color col = new Color((int) r, (int) g, (int) b);
+		Color col = new Color((int) MathUtils.clamp(r, 0, 255), (int) MathUtils.clamp(g, 0, 255), (int) MathUtils.clamp(b, 0, 255));
 		return col;
 	}
 
@@ -978,9 +931,9 @@ public class Renderer extends JPanel {
 		double col_g = c.getGreen() / 255.0;
 		double col_b = c.getBlue() / 255.0;
 
-		double out_r = Math.min(1, r * col_r); //multiply, clamp
-		double out_g = Math.min(1, g * col_g); //multiply, clamp
-		double out_b = Math.min(1, b * col_b); //multiply, clamp
+		double out_r = MathUtils.clamp(r * col_r, 0, 1); //multiply, clamp
+		double out_g = MathUtils.clamp(g * col_r, 0, 1); //multiply, clamp
+		double out_b = MathUtils.clamp(b * col_r, 0, 1); //multiply, clamp
 
 		return new Color((float) out_r, (float) out_g, (float) out_b);
 	}
