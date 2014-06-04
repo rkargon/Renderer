@@ -80,7 +80,7 @@ public class Renderer extends JPanel {
 
 		Object3D mesh;
 
-		File f = new File("/Users/raphaelkargon/Documents/Programming/STL Renderer/thaibig.stl");
+		File f = new File("/Users/raphaelkargon/Documents/Programming/STL Renderer/cube.stl");
 		try {
 			mesh = new Object3D(f);
 			mesh.mat = new Material(Color.WHITE);
@@ -115,8 +115,6 @@ public class Renderer extends JPanel {
 		status.setVisible(true);
 
 		this.addListeners();
-
-		//renderkdt = KDTree.buildTree(faces);
 	}
 
 	public void addListeners() {
@@ -538,6 +536,14 @@ public class Renderer extends JPanel {
 		double z1, z2, z3;
 		Color v1col, v2col, v3col;
 
+//		List<Edge> kdedges = renderkdt.wireframe();
+//		g2d.setColor(Color.RED);
+//		for (Edge e : kdedges) {
+//			Point p1 = cam.projectVertex(e.v1, getWidth(), getHeight());
+//			Point p2 = cam.projectVertex(e.v2, getWidth(), getHeight());
+//			if (p1 != p2) g2d.drawLine(p1.x, p1.y, p2.x, p2.y);
+//		}
+
 		//draw wireframe of selected
 		if (selected != null) {
 			g2d.setStroke(new BasicStroke(4));
@@ -563,18 +569,6 @@ public class Renderer extends JPanel {
 		if (rendermode == 0) {
 			status.setText("Wireframe");
 			g2d.setColor(Color.BLACK);
-
-			//			edges = KDTree.testTriangleClipping((int)cam.center.length());
-			//			for (int i = 0; i < edges.size(); i++) {
-			//				if (i > 11) g2d.setColor(Color.RED);
-			//				if (i > 23) g2d.setColor(Color.blue);
-			//				Edge e = edges.get(i);
-			//				v1 = cam.projectVertex(e.v1, getWidth(), getHeight());
-			//				v2 = cam.projectVertex(e.v2, getWidth(), getHeight());
-			//				if (v1 == null || v2 == null) continue;
-			//				g2d.drawLine(v1.x, v1.y, v2.x, v2.y);
-			//			}
-
 			for (Edge e : edges) {
 				v1 = vertexPixels.get(e.v1);
 				v2 = vertexPixels.get(e.v2);
@@ -835,7 +829,6 @@ public class Renderer extends JPanel {
 
 			}
 		}
-
 		return null;
 	}
 
@@ -858,7 +851,6 @@ public class Renderer extends JPanel {
 
 		return f;
 	}
-
 
 	/**
 	 * Linearly interpolates colors based on the rgb color space, using
@@ -884,7 +876,8 @@ public class Renderer extends JPanel {
 		double g = c1.getGreen() * w1 + c2.getGreen() * w2 + c3.getGreen() * w3;
 		double b = c1.getBlue() * w1 + c2.getBlue() * w2 + c3.getBlue() * w3;
 
-		Color col = new Color((int) MathUtils.clamp(r, 0, 255), (int) MathUtils.clamp(g, 0, 255), (int) MathUtils.clamp(b, 0, 255));
+		Color col = new Color((int) MathUtils.clamp(r, 0, 255), (int) MathUtils.clamp(g, 0, 255), (int) MathUtils
+				.clamp(b, 0, 255));
 		return col;
 	}
 
@@ -932,8 +925,8 @@ public class Renderer extends JPanel {
 		double col_b = c.getBlue() / 255.0;
 
 		double out_r = MathUtils.clamp(r * col_r, 0, 1); //multiply, clamp
-		double out_g = MathUtils.clamp(g * col_r, 0, 1); //multiply, clamp
-		double out_b = MathUtils.clamp(b * col_r, 0, 1); //multiply, clamp
+		double out_g = MathUtils.clamp(g * col_g, 0, 1); //multiply, clamp
+		double out_b = MathUtils.clamp(b * col_b, 0, 1); //multiply, clamp
 
 		return new Color((float) out_r, (float) out_g, (float) out_b);
 	}
@@ -946,7 +939,7 @@ public class Renderer extends JPanel {
 	}
 
 	public static void main(String[] args) {
-		JFrame f = new JFrame("Raph's ghetto-ass renderer");
+		JFrame f = new JFrame("Raph's renderer");
 		f.setSize(800, 800);
 		f.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
