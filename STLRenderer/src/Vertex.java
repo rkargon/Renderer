@@ -1,8 +1,9 @@
+import java.util.Comparator;
 import java.util.List;
 
 public class Vertex {
 	public double x, y, z;
-
+	
 	public Vertex(double x, double y, double z) {
 		super();
 		this.x = x;
@@ -68,13 +69,13 @@ public class Vertex {
 	public Vertex getUnitVector() {
 		double len = x * x + y * y + z * z;
 		if (len == 0) {
-			return this;
+			return clone();
 		}
 		if (len != 1 && len > 0) {
 			len = Math.sqrt(len);
 			return new Vertex(x / len, y / len, z / len);
 		}
-		else return this;
+		else return clone();
 	}
 
 	public void normalize() {
@@ -122,9 +123,21 @@ public class Vertex {
 	}
 
 	public String toString() {
-		return "<" + x + ", " + y + ", " + z + ">";
+		return "(" + x + ", " + y + ", " + z + ")";
 	}
 
+	public static Comparator<Vertex> vertexsorter = new Comparator<Vertex>(){
+		@Override
+		public int compare(Vertex v1, Vertex v2) {
+			int c = Double.compare(v1.x, v2.x);
+			if(c==0){
+				c = Double.compare(v1.y, v2.y);
+				if(c == 0) c = Double.compare(v1.z, v2.z);
+			}
+			return c;
+		}
+	};
+	
 	// Test method for math functions
 	public static void main(String[] args) {
 		System.out.println(new Vertex(2, 1, -1)

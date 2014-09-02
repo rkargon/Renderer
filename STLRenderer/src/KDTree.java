@@ -1,8 +1,9 @@
+import java.io.FileNotFoundException;
+import java.io.PrintWriter;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
-import java.util.Random;
 
 /**
  * The terms 'upper' and 'lower' are used interchangeably with 'right'
@@ -28,7 +29,6 @@ public class KDTree {
 
 	public static double completion = 0;
 
-	//TODO save memory by settings objects to null right before recursion?
 	public static KDTree buildTree(List<Face> faces) {
 		Vertex[] bounds = Face.calcBoundingBox(faces);
 		List<FaceWrapper> faceswrapper = FaceWrapper.wrapperList(faces); //wrapper object used to store "classification" values along with faces during tree building
@@ -43,12 +43,12 @@ public class KDTree {
 		int nfaces = 0;
 		//face classifications are initially not 0, and then are not 0 when passed from parent nodes.
 		for (PlanarEvent e : events) {
+
 			if (e.fw.classification != 0) {
 				nfaces++;
 				e.fw.classification = 0;
 			}
 		}
-
 		//exit if max recursion depth is reached or too few faces are remaining
 		if (depth > MAX_DEPTH || nfaces < MIN_FACES) {
 			List<Face> faces = new ArrayList<Face>();
@@ -61,6 +61,7 @@ public class KDTree {
 			}
 			this.faces = faces;
 			completion += 1.0 / (1 << depth);
+			//System.out.println("depth: " + depth + " nfaces: " + this.faces.size());
 			return;
 
 		}
@@ -73,7 +74,7 @@ public class KDTree {
 		double planarside = planedata[3];
 
 		//only split if SAH finds it would reduce cost
-		if (cost < splitcost) {
+		if (cost <= splitcost) {
 			List<Face> faces = new ArrayList<Face>();
 			for (PlanarEvent e : events) {
 				if (e.fw.classification == 0) {
@@ -132,21 +133,21 @@ public class KDTree {
 				e.fw.classification = 4;//prevents face from being added twice.
 			}
 		}
-		events=null;
-		
+		events = null;
+
 		for (FaceWrapper fw : faces_bothsides) {
 			generateClippedEvents(fw, pos, axis, bounds, newevents_left, newevents_right);
 		}
-		faces_bothsides=null;
+
+		faces_bothsides = null;
 
 		Collections.sort(newevents_left);
 		Collections.sort(newevents_right);
 		events_left = PlanarEvent.mergeLists(events_left, newevents_left);
 		events_right = PlanarEvent.mergeLists(events_right, newevents_right);
-		newevents_left=newevents_right=null;
-
+		newevents_left = newevents_right = null;
 		this.lower = new KDTree(events_left, lowerbounds, depth + 1);
-		events_left=null;
+		events_left = null;
 		this.upper = new KDTree(events_right, upperbounds, depth + 1);
 	}
 
@@ -203,7 +204,7 @@ public class KDTree {
 		//temporary variables
 		int plane_axis, start_count, planar_count, end_count;
 		double plane_pos, planedata[];//planedata = {cost, pside}
-		for (int i = 0; i < events.size(); i++) {
+		for (int i = 0; i < events.size();) {
 			PlanarEvent e = events.get(i);
 			plane_pos = e.pos;
 			plane_axis = e.axis;
@@ -276,21 +277,6 @@ public class KDTree {
 		else return new double[] { costrightbias * C_INTERSECT + C_TRAVERSAL, 1 };
 	}
 
-	/**
-	 * Generates split position events for a triangle clipped to a bounding box
-	 * 
-	 * NOTE: This function assumes that the face intersects the position plane
-	 * within the bounding box. This should always happen when called by the KD
-	 * Tree builder, but if this is not the case this function may miss some
-	 * outlier cases.
-	 * 
-	 * @param fw
-	 *            The face to be used
-	 * @param bounds
-	 *            The bounds the face is to be clipped to
-	 * @param eventlist
-	 *            The event list to which to add events
-	 */
 	private static void generateClippedEvents(FaceWrapper fw, double pos,
 			int axis, Vertex[] bounds, List<PlanarEvent> lowerevents,
 			List<PlanarEvent> upperevents) {
@@ -330,7 +316,8 @@ public class KDTree {
 		double r13 = (pos - v1pos) / (v3.get(axis) - v1pos);
 		v12cut = Vertex.lerp(v1, v2, r12);
 		v13cut = Vertex.lerp(v1, v3, r13);
-		int ax1 = (axis - 1) % 3, ax2 = (axis + 1) % 3;
+
+		int ax1 = (axis + 2) % 3, ax2 = (axis + 1) % 3;
 		//clamp values of intersecting points to the bounding box
 		v12cut.set(ax1, MathUtils.clamp(v12cut.get(ax1), bounds[0].get(ax1), bounds[1]
 				.get(ax1)));
@@ -340,8 +327,6 @@ public class KDTree {
 				.get(ax1)));
 		v13cut.set(ax2, MathUtils.clamp(v13cut.get(ax2), bounds[0].get(ax2), bounds[1]
 				.get(ax2)));
-
-		//TODO check if v1,2,3 are outside of the bounding box, and do some more intersections
 
 		Vertex[] lowerbounds, upperbounds;
 		if (oneUpperSide) {
@@ -461,7 +446,6 @@ public class KDTree {
 				for (; p1 < l1size; p1++)
 					outlist.add(l1.get(p1));
 			}
-			assert outlist.size() == l1size + l2size;
 			return outlist;
 		}
 

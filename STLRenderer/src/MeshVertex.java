@@ -14,7 +14,7 @@ public class MeshVertex extends Vertex {
 		Vertex n = new Vertex(0, 0, 0);
 		
 		for(Face f : faces){
-			n=n.add(f.normal);
+			n=n.add(f.normal);	
 		}
 		n.normalize();
 		

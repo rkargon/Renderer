@@ -20,10 +20,7 @@ public class World {
 			return horizcol;
 		}
 		else{
-			double uplen = dir.dotproduct(new Vertex(0, 0, 1));
-			uplen*=uplen;
-			double r = uplen/dir.lensquared();
-			return Renderer.colMix(horizcol, zenithcol, r);
+			return Renderer.colMix(horizcol, zenithcol, Math.abs(dir.z));
 		}
 	}
 }

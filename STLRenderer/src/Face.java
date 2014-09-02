@@ -1,11 +1,11 @@
-import java.awt.Color;
+import java.util.Comparator;
 import java.util.List;
 
 public class Face {
 	public Vertex normal;
 	public MeshVertex[] vertices;
 	public Object3D obj;
-
+	
 	/**
 	 * Creates a face based off of three vertices and a normal. If the normal
 	 * does not correspond to the triangle, a new normal will be
@@ -204,6 +204,7 @@ public class Face {
 	 * @return Whether the ray intersects the bounding box
 	 */
 	public static boolean rayAABBIntersect(Vertex[] bounds, Vertex origin, Vertex dir) {
+		//System.out.println("AABB intersect: "+bounds[0]+", "+bounds[1]);
 		double tmp;
 		double tmin = (bounds[0].x - origin.x) / dir.x;
 		double tmax = (bounds[1].x - origin.x) / dir.x;

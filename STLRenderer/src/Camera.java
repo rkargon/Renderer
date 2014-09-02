@@ -135,7 +135,7 @@ public class Camera {
 			}
 			Vertex proj_horiz = dv
 					.subtract(cy.scalarproduct(dv.dotproduct(cy))); //projection onto horizontal plane
-			Vertex proj_vert = dv.subtract(cx.scalarproduct(dv.dotproduct(cx))); //projection onto horizontal plane
+			Vertex proj_vert = dv.subtract(cx.scalarproduct(dv.dotproduct(cx))); //projection onto vertical plane
 
 			x = Math.asin(proj_horiz.dotproduct(cx) / proj_horiz.length());
 			y = Math.asin(proj_vert.dotproduct(cy) / proj_vert.length());

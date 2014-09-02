@@ -1,15 +1,10 @@
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.util.Collections;
 import java.util.HashMap;
-
-import javax.swing.Timer;
 
 public class Object3D {
 	public MeshVertex[] vertices;
@@ -37,7 +32,7 @@ public class Object3D {
 		//set up faces and vertices data 
 		HashMap<Vertex, MeshVertex> vertices = new HashMap<Vertex, MeshVertex>();
 		HashMap<Edge, Edge> edges = new HashMap<Edge, Edge>();
-		faces = new Face[nfaces]; //set face array initial capacity to nfaces for better performance
+		faces = new Face[nfaces];
 
 		//read each triangle
 		float x_tmp, y_tmp, z_tmp;

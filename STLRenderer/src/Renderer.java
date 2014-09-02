@@ -3,7 +3,6 @@ import java.awt.Color;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Point;
-import java.awt.RenderingHints;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.KeyAdapter;
@@ -57,6 +56,7 @@ public class Renderer extends JPanel {
 	final int TILESIZE = 32;
 	BufferedImage render;
 	KDTree renderkdt;
+	List<Edge> kdedges;
 	Thread renderthread = new Thread() {
 
 		public void run() {
@@ -80,7 +80,7 @@ public class Renderer extends JPanel {
 
 		Object3D mesh;
 
-		File f = new File("/Users/raphaelkargon/Documents/Programming/STL Renderer/cube.stl");
+		File f = new File("/Users/raphaelkargon/Documents/Programming/STL Renderer/suzanneplusplus.stl");
 		try {
 			mesh = new Object3D(f);
 			mesh.mat = new Material(Color.WHITE);
@@ -115,6 +115,20 @@ public class Renderer extends JPanel {
 		status.setVisible(true);
 
 		this.addListeners();
+		
+		renderkdt = KDTree.buildTree(faces);
+		long begin = System.nanoTime();
+		for(int i=1; i<=1_000_000; i++){
+			rayIntersect(renderkdt, Vertex.ORIGIN(), new Vertex(Math.random(),  Math.random(), Math.random()), false, null);
+			//rayIntersect(renderkdt, Vertex.ORIGIN(), new Vertex(1,1,1), false, null);
+			//rayIntersect(faces, Vertex.ORIGIN(), new Vertex(1,1,1), false, null);
+			//faces.get(0).intersectRayTriangle(Vertex.ORIGIN(), new Vertex(1,1,1), null);
+		}
+		long end = System.nanoTime();
+		System.out.println("1,000,000 kdt intersects: " + (double)(end-begin)/1_000_000_000);
+		kdedges = renderkdt.wireframe();
+		System.out.println(kdedges.size() + " edges in kdt wireframe.");
+		rayIntersect(renderkdt, Vertex.ORIGIN(), new Vertex(1,1,1), false, null);
 	}
 
 	public void addListeners() {
@@ -294,8 +308,7 @@ public class Renderer extends JPanel {
 
 			double dotprod = lampvnorm.dotproduct(n);
 			double dstsqr = lampvect.lensquared();
-
-			//if solid is well formed, then normals facing away from lamp are in shadow. 
+ 
 			if (dstsqr == 0) {
 				//if lamp is on the face's center, add full brightness to each color that the lamp emits
 				if (l.col.getRed() != 0) r += 1;
@@ -479,9 +492,9 @@ public class Renderer extends JPanel {
 					totcol = colMix(transcol, totcol, m.alpha);
 				}
 
-				if (m.relf_intensity > 0) {
+				if (m.refl_intensity > 0) {
 					Color refcol = traceRay(v, refl, kdt, depth + 1);
-					totcol = colMix(totcol, refcol, m.relf_intensity);
+					totcol = colMix(totcol, refcol, m.refl_intensity);
 				}
 			}
 			return totcol;
@@ -536,12 +549,11 @@ public class Renderer extends JPanel {
 		double z1, z2, z3;
 		Color v1col, v2col, v3col;
 
-//		List<Edge> kdedges = renderkdt.wireframe();
 //		g2d.setColor(Color.RED);
 //		for (Edge e : kdedges) {
 //			Point p1 = cam.projectVertex(e.v1, getWidth(), getHeight());
 //			Point p2 = cam.projectVertex(e.v2, getWidth(), getHeight());
-//			if (p1 != p2) g2d.drawLine(p1.x, p1.y, p2.x, p2.y);
+//			if (p1 != null && p2 != null) g2d.drawLine(p1.x, p1.y, p2.x, p2.y);
 //		}
 
 		//draw wireframe of selected
@@ -775,6 +787,7 @@ public class Renderer extends JPanel {
 				g.drawLine(j, i, j, i); //to show status
 				ray = cam.castRay(j, i, getWidth(), getHeight());
 				col = traceRay(ray[0], ray[1], renderkdt, 1);
+				//col = (rayIntersect(renderkdt, ray[0], ray[1], true, null)!=null) ? Color.BLACK : Color.WHITE;
 				g.setColor(col);
 				g.drawLine(j, i, j, i);
 			}
@@ -783,6 +796,7 @@ public class Renderer extends JPanel {
 
 	public Face rayIntersect(KDTree kdt, Vertex origin, Vertex ray,
 			boolean lazy, Vertex tuv) {
+		//System.out.println("pos: "+kdt.pos + ", axis: "+kdt.axis);
 		Vertex tuvtmp1 = Vertex.ORIGIN(), tuvtmp2 = Vertex.ORIGIN();
 		if (tuv == null) tuv = Vertex.ORIGIN();
 		Face f1, f2;
@@ -791,6 +805,7 @@ public class Renderer extends JPanel {
 		if (Face.rayAABBIntersect(kdt.bounds, origin, ray)) {
 			//is this a leaf node?
 			if (kdt.faces != null) {
+				//System.out.println("intersect "+kdt.faces.size()+" faces.");
 				f1 = rayIntersect(kdt.faces, origin, ray, lazy, tuvtmp1);
 				tuv.setVertex(tuvtmp1);
 				return f1;

@@ -11,8 +11,8 @@ public class Material {
 	public double spintensity = 1;
 	public double sphardness = 128;
 
-	public double relf_intensity = 0;
-	public double alpha = 0.3;
+	public double refl_intensity = 0;
+	public double alpha = .2;
 	public double ior = 1.7;
 
 	public Material(Color col) {
@@ -25,7 +25,7 @@ public class Material {
 		this.spcol = spcol;
 		this.spintensity = spintensity;
 		this.sphardness = sphardness;
-		this.relf_intensity = refl_intensity;
+		this.refl_intensity = refl_intensity;
 		this.alpha = trans_alpha;
 		this.ior = ior;
 	}
